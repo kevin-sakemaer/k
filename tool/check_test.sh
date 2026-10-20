@@ -95,6 +95,10 @@ new_repo() {
   mkdir -p "$d/.github/scripts" "$d/.github/workflows"
   cp "$here/../.github/scripts/workflow_lint.sh" "$d/.github/scripts/"
   cp "$here/../.github/workflows/"*.yml "$d/.github/workflows/"
+  for t in .github/scripts/review_gate_test.sh .github/scripts/github_guard_test.sh \
+    .github/scripts/workflow_lint_test.sh tool/check_test.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' >"$d/$t"
+  done
   printf 'name: ws\nworkspace:\n  - packages/a\n' >"$d/pubspec.yaml"
   printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n' >"$d/k.yaml"
   printf 'coverage.default 100\ncoverage.tool_version 1.16.0\n' >"$d/.fake_kconfig"
@@ -237,6 +241,11 @@ r="$(new_repo)"
 printf 'permissions: {}\njobs:\n  x:\n    timeout-minutes: 1\n    steps:\n      - uses: a/b@v1\n' \
   >"$r/.github/workflows/bad.yml"
 expect "an unpinned action fails" 1 "FAIL: workflow hardening check failed" "$r"
+
+r="$(new_repo)"
+rm "$r/.github/scripts/workflow_lint_test.sh"
+expect "a missing bash test file fails" 1 \
+  "bash test not found: .github/scripts/workflow_lint_test.sh" "$r"
 
 r="$(new_repo)"
 expect "pub get enforces the lockfile" 0 "All checks passed." "$r"

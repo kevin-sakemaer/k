@@ -59,9 +59,8 @@ skip_missing() {
 
 step "bash tests"
 for t in .github/scripts/review_gate_test.sh .github/scripts/github_guard_test.sh .github/scripts/workflow_lint_test.sh tool/check_test.sh; do
-  if [ -f "$t" ]; then
-    bash "$t" || fail "bash tests failed: $t"
-  fi
+  [ -f "$t" ] || fail "bash test not found: $t"
+  bash "$t" || fail "bash tests failed: $t"
 done
 
 step "workflow hardening (#6)"

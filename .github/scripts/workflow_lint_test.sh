@@ -49,8 +49,14 @@ expect "a SHA without version comment fails" 1 "not pinned by a full commit SHA"
   "${good/ # v7.0.1/}"
 expect "a job without timeout fails" 1 "job 'b' has no timeout-minutes" \
   "$(sed '12d' <<<"$good")"
-expect "missing top-level permissions fails" 1 "missing top-level permissions" \
+expect "missing top-level permissions fails" 1 "must be exactly 'permissions: {}'" \
   "$(sed '/^permissions:/d' <<<"$good")"
+expect "write-all top-level permissions fail" 1 "must be exactly 'permissions: {}'" \
+  "${good/permissions: \{\}/permissions: write-all}"
+expect "widened top-level permissions fail" 1 "must be exactly 'permissions: {}'" \
+  "${good/permissions: \{\}/permissions: {contents: write\}}"
+expect "a pinned SHA hidden in a comment fails" 1 "not pinned by a full commit SHA" \
+  "${good/@$sha # v7.0.1/@main # uses: x@$sha # v1}"
 
 d="$(mktemp -d "$work/empty.XXXX")"
 out="$(bash "$lint" "$d" 2>&1)" && code=0 || code=$?

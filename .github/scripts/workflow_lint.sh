@@ -4,7 +4,8 @@
 # - every `uses:` is pinned by a full 40-character commit SHA, followed by the
 #   version in a comment (`uses: owner/repo@<sha> # vX.Y.Z`);
 # - every job sets `timeout-minutes`;
-# - the workflow sets `permissions:` at the top level.
+# - the workflow sets exactly `permissions: {}` at the top level; jobs widen
+#   their own permissions.
 # Usage: workflow_lint.sh [workflow-directory] (default .github/workflows).
 set -euo pipefail
 
@@ -18,12 +19,13 @@ report() { echo "$1: $2" >&2; errors=$((errors + 1)); }
 
 for f in "${files[@]}"; do
   while IFS=: read -r line text; do
-    if ! [[ "$text" =~ uses:[[:space:]]*[^[:space:]@]+@[0-9a-f]{40}[[:space:]]+#[[:space:]]*v[0-9] ]]; then
+    if ! [[ "$text" =~ ^[[:space:]-]*uses:[[:space:]]*[^[:space:]@#]+@[0-9a-f]{40}[[:space:]]+#[[:space:]]*v[0-9] ]]; then
       report "$f:$line" "action not pinned by a full commit SHA with its version in a comment: ${text#"${text%%[![:space:]]*}"}"
     fi
   done < <(grep -nE '^[[:space:]-]*uses:' "$f" || true)
 
-  grep -qE '^permissions:' "$f" || report "$f" "missing top-level permissions"
+  grep -qxE 'permissions:[[:space:]]*\{\}[[:space:]]*' "$f" \
+    || report "$f" "top-level permissions must be exactly 'permissions: {}'"
 
   # Job keys are the two-space keys under `jobs:`; each job block must contain
   # a four-space `timeout-minutes:` key.
