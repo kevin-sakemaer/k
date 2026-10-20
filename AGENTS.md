@@ -70,10 +70,14 @@ tool/install_hooks.sh
 8. **Nobody merges by hand.** The only exception is the bootstrap: the PRs for #1 and #2 are merged once by hand after the Reviewer's verdict.
 
 ## Hardened CI (#6)
-- Every `uses:` is pinned by a full 40-character commit SHA, with the version in a comment (`owner/repo@<sha> # vX.Y.Z`).
-- Every workflow sets `permissions: {}` at the top level, and each job widens only what it needs (default `contents: read`).
-- Every job sets `timeout-minutes`.
-- `.github/scripts/workflow_lint.sh` enforces these three rules. `tool/check.sh` runs it in the required `test` check, and `.github/scripts/workflow_lint_test.sh` tests it.
+- Every `uses:` of a job or a step has one of three forms:
+  - `owner/repo[/path]@<40-character commit SHA>`, followed on its line by the version in a comment (`# vX.Y.Z`); quoting the value is fine;
+  - a local action (`./...`);
+  - a Docker image pinned by digest (`docker://image@sha256:<64 hex>`).
+- Every workflow sets exactly `permissions: {}` at the top level.
+- Job `permissions`, when set, is a mapping of explicit GitHub scopes (`contents`, `pull-requests`, ...) to `read`, `write` or `none`. A shorthand such as `write-all` or `read-all` and an unknown scope are rejected. Each job grants only the scopes it uses.
+- Every job that runs steps sets a positive integer `timeout-minutes`. A job that calls a reusable workflow cannot set one.
+- `packages/k_workflows` enforces these rules on `.github/workflows/*.yml|yaml` with a real YAML parse (`package:yaml`), so flow mappings, quoted keys and comments cannot hide a reference, and a duplicated key is invalid YAML. `tool/check.sh` runs it in the required `test` check.
 - `concurrency` uses `cancel-in-progress: true` for `test` and `k-config`. The gates (`review-gate`, `github-guard`) and `auto-merge` keep `cancel-in-progress: false` on purpose: a newer event must never cancel a run that removes a stale approval label.
 - `pubspec.lock` is committed, and every `dart pub get` in CI runs with `--enforce-lockfile`, so an out-of-sync lockfile fails the job.
 - The pub cache (`~/.pub-cache`) is cached with `actions/cache`, keyed on the hash of every `pubspec.lock`.

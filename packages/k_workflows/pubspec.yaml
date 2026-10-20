@@ -1,0 +1,13 @@
+name: k_workflows
+description: Checks that the GitHub Actions workflows follow the hardened CI rules.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  yaml: ^3.1.3
+
+dev_dependencies:
+  test: ^1.25.0

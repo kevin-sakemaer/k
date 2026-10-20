@@ -58,13 +58,10 @@ skip_missing() {
 [ -f k.yaml ] || fail "k.yaml is required"
 
 step "bash tests"
-for t in .github/scripts/review_gate_test.sh .github/scripts/auto_merge_test.sh .github/scripts/github_guard_test.sh .github/scripts/workflow_lint_test.sh tool/check_test.sh; do
+for t in .github/scripts/review_gate_test.sh .github/scripts/auto_merge_test.sh .github/scripts/github_guard_test.sh tool/check_test.sh; do
   [ -f "$t" ] || fail "bash test not found: $t"
   bash "$t" || fail "bash tests failed: $t"
 done
-
-step "workflow hardening (#6)"
-bash .github/scripts/workflow_lint.sh || fail "workflow hardening check failed"
 
 if [ ! -f pubspec.yaml ]; then
   fail "pubspec.yaml is missing at the repository root"
@@ -154,6 +151,10 @@ check_script "dependency publishers check" 4 "packages/k_publishers/bin/k_publis
 # k_config: k.yaml already has a comments section.
 check_script "comments check" required "packages/k_comments/bin/k_comments.dart" \
   --root . --include '**.dart' --exclude '.dart_tool/**' --exclude '**/.dart_tool/**'
+
+# Hardened CI rules for every workflow (#6): a YAML parse of
+# .github/workflows checks pinned uses:, timeouts and permissions.
+check_script "workflow hardening (#6)" required "packages/k_workflows/bin/k_workflows.dart"
 
 step "workspace packages"
 ws_json="$(dart pub workspace list --json)" \
