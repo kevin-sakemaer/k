@@ -30,23 +30,37 @@ void main() {
     test('a tag, a branch or a short SHA fails', () {
       for (final ref in <String>['v7', 'main', '0123456']) {
         expect(lint(workflow(step: '- uses: actions/checkout@$ref # v7')), [
-          contains('must be pinned by a full 40-character commit SHA'),
+          contains('must be owner/repo[/path]@<full 40-character commit SHA>'),
         ]);
+      }
+    });
+
+    test('a reference with several @ or a bad owner/repo fails', () {
+      for (final ref in <String>[
+        'a/b@main@$sha',
+        'a/b@$sha@$sha',
+        'checkout@$sha',
+        '/b@$sha',
+        'a/b/@$sha',
+      ]) {
+        expect(lint(workflow(step: '- uses: $ref # v1')), [
+          contains('with exactly one @'),
+        ], reason: ref);
       }
     });
 
     test('a reference without @ fails', () {
       expect(lint(workflow(step: '- uses: actions/checkout')), [
-        contains('must be pinned by a full 40-character commit SHA'),
+        contains('must be owner/repo[/path]@<full 40-character commit SHA>'),
       ]);
     });
 
     test('flow and quoted keys are parsed', () {
       expect(lint(workflow(step: '- {uses: actions/checkout@main}')), [
-        contains('"actions/checkout@main" must be pinned'),
+        contains('"actions/checkout@main" must be owner/repo'),
       ]);
       expect(lint(workflow(step: '- "uses": actions/checkout@main')), [
-        contains('"actions/checkout@main" must be pinned'),
+        contains('"actions/checkout@main" must be owner/repo'),
       ]);
     });
 
@@ -55,7 +69,7 @@ void main() {
         lint(
           workflow(step: '- uses: actions/checkout@main # uses: x@$sha # v1'),
         ),
-        [contains('"actions/checkout@main" must be pinned')],
+        [contains('"actions/checkout@main" must be owner/repo')],
       );
     });
 
@@ -109,9 +123,27 @@ void main() {
           '    uses: org/repo/.github/workflows/w.yml@$sha # v1\n';
       const expected =
           "w.yml: job 'call': "
-          '"org/repo/.github/workflows/w.yml@main" must be pinned by a full '
-          '40-character commit SHA.';
+          '"org/repo/.github/workflows/w.yml@main" must be '
+          'owner/repo[/path]@<full 40-character commit SHA>, '
+          'with exactly one @.';
       expect(lint(source), [expected]);
+    });
+  });
+
+  group('merge keys', () {
+    test('a merge key in a step fails', () {
+      final String source = workflow(step: '- <<: *st').replaceFirst(
+        'jobs:\n',
+        'x: &st {uses: actions/checkout@main}\njobs:\n',
+      );
+      expect(lint(source), [contains('YAML merge keys (<<) are not allowed')]);
+    });
+
+    test('a merge key anywhere fails', () {
+      final String source = workflow(
+        job: '    timeout-minutes: 5\n    <<: {permissions: write-all}',
+      );
+      expect(lint(source), [contains('YAML merge keys (<<) are not allowed')]);
     });
   });
 

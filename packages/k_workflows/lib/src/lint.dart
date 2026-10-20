@@ -23,8 +23,10 @@ const Set<String> jobPermissionScopes = {
 /// Access levels that a job permission scope may have.
 const Set<String> _accessLevels = {'read', 'write', 'none'};
 
-/// A full commit SHA.
-final RegExp _sha = RegExp(r'^[0-9a-f]{40}$');
+/// `owner/repo[/path]@<40 hex commit SHA>`, with exactly one `@`.
+final RegExp _pinnedAction = RegExp(
+  r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[^@\s]+)?@[0-9a-f]{40}$',
+);
 
 /// A Docker image digest.
 final RegExp _digest = RegExp(r'@sha256:[0-9a-f]{64}$');
@@ -43,9 +45,10 @@ final RegExp _versionComment = RegExp(r'#\s*v\d');
 ///   (a job that calls a reusable workflow cannot set one);
 /// - job `permissions`, when set, is a mapping of known scopes to `read`,
 ///   `write` or `none`, never a shorthand such as `write-all` or `read-all`;
+/// - no mapping uses the YAML merge key `<<`;
 /// - every `uses:` of a job or a step is a local action (`./...`), a Docker
 ///   image pinned by digest (`docker://...@sha256:<64 hex>`), or
-///   `owner/repo[/path]@<40 hex>` followed on its line by a `# v...` comment.
+///   `owner/repo[/path]@<40 hex>` (exactly one `@`) followed on its line by a `# v...` comment.
 List<String> lintWorkflow(String source, String path) {
   final errors = <String>[];
   void report(String message) => errors.add('$path: $message');
@@ -57,6 +60,12 @@ List<String> lintWorkflow(String source, String path) {
   }
   if (document is! YamlMap) {
     return ['$path: a workflow must be a mapping.'];
+  }
+  if (_hasMergeKey(document)) {
+    const message =
+        'YAML merge keys (<<) are not allowed: they can hide a uses: or a '
+        'permissions value.';
+    return ['$path: $message'];
   }
   final Object? permissions = document['permissions'];
   if (permissions is! Map || permissions.isNotEmpty) {
@@ -77,6 +86,15 @@ List<String> lintWorkflow(String source, String path) {
   }
   return errors;
 }
+
+bool _hasMergeKey(YamlNode node) => switch (node) {
+  YamlMap(:final Map<dynamic, YamlNode> nodes) => nodes.entries.any(
+    (entry) =>
+        (entry.key as YamlNode).value == '<<' || _hasMergeKey(entry.value),
+  ),
+  YamlList(:final List<YamlNode> nodes) => nodes.any(_hasMergeKey),
+  _ => false,
+};
 
 void _lintJob(YamlMap job, String source, void Function(String) report) {
   final YamlNode? uses = job.nodes['uses'];
@@ -135,9 +153,11 @@ void _lintUses(YamlNode node, String source, void Function(String) report) {
     }
     return;
   }
-  final int at = value.lastIndexOf('@');
-  if (at < 0 || !_sha.hasMatch(value.substring(at + 1))) {
-    report('"$value" must be pinned by a full 40-character commit SHA.');
+  if (!_pinnedAction.hasMatch(value)) {
+    report(
+      '"$value" must be owner/repo[/path]@<full 40-character commit SHA>, '
+      'with exactly one @.',
+    );
     return;
   }
   final int end = node.span.end.offset;
