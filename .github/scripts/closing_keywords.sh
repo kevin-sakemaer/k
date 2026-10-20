@@ -4,9 +4,15 @@
 # contain any GitHub closing keyword (close, closes, closed, fix, fixes, fixed,
 # resolve, resolves, resolved) followed by an issue reference anywhere in its
 # title, description or commit messages. Matching is case-insensitive and
-# covers #N, owner/repo#N and full issue URLs. A PR that is not partial may use
-# a closing keyword when it fully delivers the issue. Fails closed on any API
-# error.
+# covers #N, GH-N, owner/repo#N and issue or pull URLs with or without
+# scheme or www. A PR that is not partial may use a closing keyword when it
+# fully delivers the issue. Fails closed on any API error.
+#
+# One rule, stricter than GitHub, applied to both the partial marker and the
+# closing keywords: everything is scanned, including fenced code blocks and
+# inline code. Before matching, the markdown characters ` [ ] ( ) < > * ~ are
+# replaced by spaces, so code spans, links, autolinks and emphasis cannot hide
+# a reference. Only the first reference after a keyword is needed to fail.
 #
 # Required environment: REPO (owner/name), PR (number).
 # GH can point to another gh binary; tests put a fake gh first in PATH.
@@ -18,7 +24,8 @@ GH="${GH:-gh}"
 MAX_COMMITS=250
 
 NAME='[[:alnum:]_.-]+'
-REF="(#[0-9]+|$NAME/$NAME#[0-9]+|https?://github\\.com/$NAME/$NAME/(issues|pull)/[0-9]+)"
+URL="(https?://)?(www\\.)?github\\.com/$NAME/$NAME/(issues|pull)/[0-9]+"
+REF="(#[0-9]+|gh-[0-9]+|$NAME/$NAME#[0-9]+|$URL)"
 B='(^|[^[:alnum:]_])'
 CLOSING="$B(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]*$REF"
 PARTIAL="$B(part[[:space:]]+of|refs)[[:space:]]*:?[[:space:]]*$REF"
@@ -39,7 +46,10 @@ api() {
 
 # check_text TEXT: fails when TEXT is partial and has a closing keyword.
 check_text() {
-  local partial closing
+  local partial closing text
+  # Markdown syntax must not hide a reference (see the header).
+  text=$(printf '%s\n' "$1" | tr '`[]()<>*~' '         ')
+  set -- "$text"
   partial=$(printf '%s\n' "$1" | grep -Eio "$PARTIAL" | sed -E 's/^[^[:alnum:]]+//' || true)
   if [ -z "$partial" ]; then
     echo "Not a partial PR (no 'Part of #N' or 'Refs #N'); closing keywords are allowed."

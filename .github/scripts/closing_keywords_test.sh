@@ -112,6 +112,29 @@ text 1 "Part of o/r#1, close #2"
 text 1 "Part of https://github.com/o/r/issues/1, close #2"
 text 1 "REFS #1 Resolved #1"
 text 1 "Refs #1 then close #9"
+# GH-N, markdown links, scheme-less and www URLs.
+text 1 "Part of #1, Fixes GH-1"
+text 1 "Part of #1, fixes gh-1"
+text 1 "Part of #1, Fixes [#1](https://github.com/o/r/issues/1)"
+text 1 "Part of #1, Fixes [o/r#1](https://github.com/o/r/issues/1)"
+text 1 "Part of #1, Fixes https://www.github.com/o/r/issues/1"
+text 1 "Part of #1, Fixes github.com/o/r/issues/1"
+text 1 "Part of #1, Fixes www.github.com/o/r/issues/1"
+text 1 "Part of #1, Fixes http://github.com/o/r/issues/1"
+text 1 "Part of #1, Fixes <https://github.com/o/r/pull/1>"
+text 1 "Part of #1, Fixes: #1"
+text 1 "Part of #1, Fixes #1, #2"
+text 1 "Part of #1, **Fixes** #1"
+# Code is scanned too: fenced blocks and inline code.
+text 1 $'Part of #1\n```\nfixes #1\n```'
+text 1 $'```\nPart of #1\n```\nfixes #1'
+text 1 'Part of #1, Fixes `#1`'
+text 1 'Part of #1, `Fixes #1`'
+text 1 'Part of `#1`, Fixes #1'
+text 1 'Part of [#1](https://github.com/o/r/issues/1), Fixes #1'
+text 1 'Refs GH-1, Fixes #1'
+text 0 'Fixes `#1`'
+text 0 "Part of #1, prefixes the fixture"
 
 # Negatives.
 text 0 ""
