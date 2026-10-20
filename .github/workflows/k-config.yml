@@ -1,7 +1,7 @@
 name: k-config
 
-# Not yet a required check on main: k.dart Lead adds `k-config` to the
-# required checks of the main ruleset once this workflow is merged.
+# Not a required check: the required `test` job already validates k.yaml
+# through tool/check.sh. This workflow adds the job summary.
 
 on:
   pull_request:

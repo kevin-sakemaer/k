@@ -14,8 +14,9 @@ dart run packages/k_config/bin/k_config.dart [repository-root]
 The command exits with code 1 and prints one line per error when `k.yaml` is
 invalid. When it is valid, it prints a Markdown summary of every active
 override and exception, and appends it to `$GITHUB_STEP_SUMMARY` when that
-variable is set. The `k-config` CI check (not yet required on `main`) runs it on every pull
-request.
+variable is set. `tool/check.sh` runs it in the required `test` check on every pull
+request; the `k-config` workflow (not required) also runs it and writes the
+job summary.
 
 Other checks read the typed values with `loadKConfig(Directory root)`.
 
