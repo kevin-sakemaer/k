@@ -4,7 +4,10 @@
 # analysis_options.yaml, k.yaml and dart_test.yaml at any depth, since the
 # analyzer uses the nearest analysis_options.yaml and dart_test.yaml can
 # silently skip or exclude tests, #22; and every checker package listed in
-# CHECKER_PACKAGES, since tool/check.sh runs them from the PR head, #31) unless the label
+# CHECKER_PACKAGES, since tool/check.sh runs them from the PR head, #31; and
+# the root pubspec.yaml and pubspec.lock and pubspec_overrides.yaml at any
+# depth, since dependency_overrides there decide what code the checkers run)
+# unless the label
 # ci:github-change-approved is set AND fresh: its latest "labeled" event must be
 # newer than the push of the current head (same rule as review_gate.sh, shared
 # in freshness.sh). Every push (synchronize) or reopen removes that label. Fails
@@ -27,7 +30,8 @@ LABEL_URI='ci%3Agithub-change-approved'
 MAX_FILES=3000
 # Checker packages run by tool/check.sh from the PR head: a PR could otherwise
 # weaken the checker that checks it (#31). This is the only list of them; add
-# any new checker package here.
+# any new checker package here. github_guard_test.sh fails when a package with
+# a bin/, or any packages/k_* outside its explicit non-checker list, is missing.
 CHECKER_PACKAGES=(
   packages/k_comments
   packages/k_config
@@ -56,7 +60,7 @@ api() {
 
 is_protected() {
   case "$1" in
-    .github/* | tool/check.sh | tool/*_test.sh | tool/hooks/* | analysis_options.yaml | */analysis_options.yaml | k.yaml | */k.yaml | dart_test.yaml | */dart_test.yaml) return 0 ;;
+    .github/* | tool/check.sh | tool/*_test.sh | tool/hooks/* | analysis_options.yaml | */analysis_options.yaml | k.yaml | */k.yaml | dart_test.yaml | */dart_test.yaml | pubspec.yaml | pubspec.lock | pubspec_overrides.yaml | */pubspec_overrides.yaml) return 0 ;;
   esac
   local pkg
   for pkg in "${CHECKER_PACKAGES[@]}"; do
