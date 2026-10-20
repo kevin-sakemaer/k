@@ -355,7 +355,7 @@ comments: {exceptions: []}
         [
           message(
             'k.yaml: coverage.overrides.gamma: unknown package. '
-            'Workspace packages: alpha, beta.',
+            'Workspace packages: alpha, beta, workspace_root.',
           ),
         ],
       ),

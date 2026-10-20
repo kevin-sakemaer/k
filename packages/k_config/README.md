@@ -14,14 +14,20 @@ dart run packages/k_config/bin/k_config.dart [repository-root]
 The command exits with code 1 and prints one line per error when `k.yaml` is
 invalid. When it is valid, it prints a Markdown summary of every active
 override and exception, and appends it to `$GITHUB_STEP_SUMMARY` when that
-variable is set. `tool/check.sh` runs it in the required `test` check on every pull
-request; the `k-config` workflow (not required) also runs it and writes the
-job summary.
+variable is set. `tool/check.sh` runs it in the required `test` check on
+every pull request; the `k-config` workflow (not required) also runs it and
+writes the job summary.
 
 `dart run packages/k_config/bin/k_config.dart --get <key> [repository-root]`
-prints only the validated value of `<key>` (`coverage.default` or
-`coverage.tool_version`) and exits with code 1 when `k.yaml` is invalid, or 64
-for an unsupported key. Scripts use it instead of parsing `k.yaml`.
+prints only the validated value of `<key>`: `coverage.default`,
+`coverage.tool_version`, or `coverage.thresholds`. The last one prints one
+`<package>\t<threshold>` line per workspace package, the root included: its
+override, or `coverage.default`. The command exits with code 1 when `k.yaml`
+is invalid, or 64 for an unsupported key. Scripts use it instead of parsing
+`k.yaml`.
+
+The root `pubspec.yaml` must have a `name`: the root package is a workspace
+package, so it can have a coverage override and gets a threshold.
 
 Other checks read the typed values with `loadKConfig(Directory root)`.
 
@@ -32,8 +38,8 @@ coverage:
   default: 100              # Integer from 0 to 100, line coverage in percent.
   tool_version: 1.16.0      # Exact package:coverage version, MAJOR.MINOR.PATCH.
   overrides:                # Required, may be {}.
-    some_package:           # Must be a workspace package.
-      threshold: 95         # Integer from 0 to 100, lower than coverage.default.
+    some_package:           # A workspace package, or the root package.
+      threshold: 95         # Integer from 0 to 100, below coverage.default.
       reason: "Why this package cannot reach the default."
 dependencies:
   exceptions:               # Required, may be {}.
@@ -55,7 +61,9 @@ Validation fails on:
 - an unknown key, or a missing key, at any level;
 - a duplicated key, including a duplicated section;
 - a value of the wrong type;
-- a threshold that is not a plain decimal integer from 0 to 100 (no decimal, exponent, hexadecimal, octal, sign, separator, leading zero, string or boolean);
+- a threshold that is not a plain decimal integer from 0 to 100 (no
+  decimal, exponent, hexadecimal, octal, sign, separator, leading zero,
+  string or boolean);
 - a `coverage.tool_version` that is not an exact `MAJOR.MINOR.PATCH` string;
 - a missing or blank `reason`;
 - a coverage override for a package that is not in the workspace, or whose

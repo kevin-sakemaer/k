@@ -45,7 +45,9 @@ case "$1 ${2:-}" in
       echo "k.yaml: invalid YAML" >&2
       exit 1
     }
-    if [ "${3:-}" = "--get" ]; then
+    if [ "${3:-}" = "--get" ] && [ "$4" = coverage.thresholds ]; then
+      cat .fake_thresholds
+    elif [ "${3:-}" = "--get" ]; then
       awk -v k="$4" '$1 == k { print $2 }' .fake_kconfig
     fi
     ;;
@@ -96,6 +98,7 @@ new_repo() {
   printf 'name: ws\nworkspace:\n  - packages/a\n' >"$d/pubspec.yaml"
   printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n' >"$d/k.yaml"
   printf 'coverage.default 100\ncoverage.tool_version 1.16.0\n' >"$d/.fake_kconfig"
+  printf 'a\t100\n' >"$d/.fake_thresholds"
   printf '.\npackages/a\n' >"$d/.fake_ws"
   printf 'int one() {\n  return 1;\n}\n' >"$d/packages/a/lib/a.dart"
   printf 'void main() {}\n' >"$d/packages/a/test/a_test.dart"
@@ -148,9 +151,70 @@ expect "workspace root with lib/ and no tests fails" 1 "package . has no test" "
 
 # Blocking 2: every k.yaml value comes from k_config, never from parsing.
 r="$(new_repo)"
-printf 'coverage.default 50\ncoverage.tool_version 1.16.0\n' >"$r/.fake_kconfig"
+printf 'a\t50\n' >"$r/.fake_thresholds"
 printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
-expect "threshold read through k_config is used" 0 "required 50%" "$r"
+expect "an override lets its package pass at its threshold" 0 "required 50%" "$r"
+
+r="$(new_repo)"
+for bad in 95.5 101 095 -1; do
+  r="$(new_repo)"
+  printf 'a\t%s\n' "$bad" >"$r/.fake_thresholds"
+  expect "a threshold of $bad from k_config is rejected" 1 \
+    "invalid coverage threshold for a: $bad" "$r"
+done
+
+r="$(new_repo)"
+printf 'other\t100\n' >"$r/.fake_thresholds"
+expect "a package without threshold fails" 1 \
+  "k_config printed no coverage threshold for package a" "$r"
+
+r="$(new_repo)"
+printf 'a\tabc\n' >"$r/.fake_thresholds"
+expect "a malformed threshold fails" 1 "invalid coverage threshold for a: abc" "$r"
+
+r="$(new_repo)"
+: >"$r/.fake_thresholds"
+expect "no thresholds fails" 1 "k_config printed an empty value for coverage.thresholds" "$r"
+
+r="$(new_repo)"
+summary="$r/summary.md"
+: >"$summary"
+printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
+GITHUB_STEP_SUMMARY="$summary" expect "a failing package fails" 1 \
+  "below the threshold 100%" "$r"
+if grep -qF -- "- Coverage packages/a: 50.00% (1/2 lines), required 100%" "$summary"; then
+  echo "ok   - job summary lists a failing package"
+  pass=$((pass + 1))
+else
+  echo "FAIL - job summary lists a failing package"
+  failed=$((failed + 1))
+fi
+
+# The workspace root with a lib/ is measured with its own threshold.
+r="$(new_repo)"
+mkdir -p "$r/lib" "$r/test"
+printf 'int root() {\n  return 0;\n}\n' >"$r/lib/root.dart"
+printf 'void main() {}\n' >"$r/test/root_test.dart"
+printf 'SF:@PKG@/lib/root.dart\nLF:2\nLH:2\nend_of_record\n' >"$r/fake.lcov"
+printf '{"packages":[{"name":"ws","path":"%s"},{"name":"a","path":"%s"}]}' \
+  "$r" "$r/packages/a" >"$r/.fake_ws_json"
+expect "a root without threshold fails" 1 \
+  "k_config printed no coverage threshold for package ws" "$r"
+printf 'a\t100\nws\t100\n' >"$r/.fake_thresholds"
+expect "a root with lib/ gets its threshold" 0 "Coverage .: 100.00% (2/2 lines), required 100%" "$r"
+
+r="$(new_repo)"
+summary="$r/summary.md"
+: >"$summary"
+GITHUB_STEP_SUMMARY="$summary" expect "coverage is written to the job summary" 0 \
+  "All checks passed." "$r"
+if grep -qF -- "- Coverage packages/a: 100.00% (2/2 lines), required 100%" "$summary"; then
+  echo "ok   - job summary lists the coverage"
+  pass=$((pass + 1))
+else
+  echo "FAIL - job summary lists the coverage"
+  failed=$((failed + 1))
+fi
 
 r="$(new_repo)"
 printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
@@ -165,9 +229,9 @@ r="$(new_repo)"
 FAKE_KCONFIG_FAIL=1 expect "an invalid k.yaml fails" 1 "FAIL: k.yaml validation (k_config) failed" "$r"
 
 r="$(new_repo)"
-printf 'coverage.tool_version 1.16.0\n' >"$r/.fake_kconfig"
+printf 'coverage.default 100\n' >"$r/.fake_kconfig"
 expect "a value k_config does not print fails" 1 \
-  "k_config printed an empty value for coverage.default" "$r"
+  "k_config printed an empty value for coverage.tool_version" "$r"
 
 r="$(new_repo)"
 printf 'permissions: {}\njobs:\n  x:\n    timeout-minutes: 1\n    steps:\n      - uses: a/b@v1\n' \
@@ -329,6 +393,14 @@ if [ -n "$real_dart" ] && [ -f "$here/../packages/k_config/bin/k_config.dart" ];
     pass=$((pass + 1))
   else
     echo "FAIL - flow style k.yaml is read by k_config: $got"
+    failed=$((failed + 1))
+  fi
+  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  if got="$(kget_real coverage.thresholds)" && [ "$got" = "$(printf 'a\t100\nws\t100')" ]; then
+    echo "ok   - k_config gives the workspace root a threshold"
+    pass=$((pass + 1))
+  else
+    echo "FAIL - k_config gives the workspace root a threshold: $got"
     failed=$((failed + 1))
   fi
   # The Guardian's coverage.default cases, now enforced by k_config.

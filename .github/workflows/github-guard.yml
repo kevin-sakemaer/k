@@ -1,11 +1,12 @@
 name: github-guard
 
 # Fails when a PR changes a protected path (.github/, tool/check.sh,
-# tool/*_test.sh, tool/hooks/, and analysis_options.yaml or k.yaml at any depth)
-# unless the Reviewer added a fresh label ci:github-change-approved; every push
-# removes that label (#15). The list lives in .github/scripts/github_guard.sh.
-# pull_request_target runs this workflow and its script as defined on the base
-# branch. Never check out or run code from the PR head here.
+# tool/*_test.sh, tool/hooks/, and analysis_options.yaml, k.yaml or
+# dart_test.yaml at any depth) unless the Reviewer added a fresh label
+# ci:github-change-approved; every push removes that label (#15). The list lives
+# in .github/scripts/github_guard.sh. pull_request_target runs this workflow and
+# its script as defined on the base branch. Never check out or run code from the
+# PR head here.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled]
