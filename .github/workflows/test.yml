@@ -14,13 +14,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      issues: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Test the review-gate script
-        shell: bash
-        run: bash .github/scripts/review_gate_test.sh
       - name: Detect Dart project
         id: detect
         run: |
@@ -28,24 +26,14 @@ jobs:
             echo "dart=true" >> "$GITHUB_OUTPUT"
           else
             echo "dart=false" >> "$GITHUB_OUTPUT"
-            echo "No pubspec.yaml: nothing to check."
           fi
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
         if: steps.detect.outputs.dart == 'true'
         with:
           sdk: 3.13.5
-      - if: steps.detect.outputs.dart == 'true'
-        run: dart pub get
-      - if: steps.detect.outputs.dart == 'true'
-        run: dart format --output=none --set-exit-if-changed .
-      - if: steps.detect.outputs.dart == 'true'
-        run: dart analyze --fatal-infos
-      - name: Require tests
-        if: steps.detect.outputs.dart == 'true'
-        run: |
-          if [ -z "$(find test -name '*_test.dart' -print -quit 2>/dev/null)" ]; then
-            echo "::error::pubspec.yaml exists but no tests were found in test/"
-            exit 1
-          fi
-      - if: steps.detect.outputs.dart == 'true'
-        run: dart test
+      - name: Run tool/check.sh (single source of checks)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash tool/check.sh
