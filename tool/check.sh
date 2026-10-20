@@ -12,6 +12,7 @@ cd "$root"
 
 # Version of package:coverage (publisher tools.dart.dev) used to build the
 # lcov report. Pinned so local and CI runs use the same tool.
+# TODO(#13): move coverage_version to k.yaml once k_config lands.
 coverage_version="1.16.0"
 
 fast=false
@@ -47,7 +48,13 @@ skip_missing() {
   fi
   case "$state" in
     OPEN) skip "$file not found (issue #$issue is still open)." ;;
-    "") warn "$file not found and the state of issue #$issue could not be checked (gh missing or failing)." ;;
+    "")
+      # In CI an unverifiable skip must not pass silently; locally it warns.
+      if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
+        fail "$file not found and the state of issue #$issue could not be checked (gh missing or failing): cannot verify the skip in CI"
+      fi
+      warn "$file not found and the state of issue #$issue could not be checked (gh missing or failing)."
+      ;;
     *) fail "$file not found but issue #$issue is $state: the script was expected by now" ;;
   esac
 }

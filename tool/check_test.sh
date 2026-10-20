@@ -171,8 +171,12 @@ FAKE_GH_STATE=CLOSED expect "skip fails once the issue is closed" 1 \
   "issue #13 is CLOSED" "$r"
 
 r="$(new_repo)"
-FAKE_GH_FAIL=1 expect "unknown issue state only warns" 0 \
+FAKE_GH_FAIL=1 expect "unknown issue state only warns locally" 0 \
   "state of issue #13 could not be checked" "$r"
+
+r="$(new_repo)"
+FAKE_GH_FAIL=1 CI_MODE=true expect "unknown issue state fails in CI" 1 \
+  "::error::packages/k_config/bin/k_config.dart not found and the state of issue #13 could not be checked" "$r"
 
 r="$(new_repo)"
 rm "$r/pubspec.yaml"
