@@ -1,7 +1,7 @@
 name: k-config
 
-# Not a required check: the required `test` job already validates k.yaml
-# through tool/check.sh. This workflow adds the job summary.
+# Required check on main (ruleset 25458936). It validates k.yaml, as the
+# `test` job does through tool/check.sh, and adds the job summary.
 
 on:
   pull_request:
