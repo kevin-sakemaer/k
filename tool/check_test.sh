@@ -44,6 +44,12 @@ case "$1 ${2:-}" in
       case "$a" in --coverage=*) mkdir -p "${a#--coverage=}" ;; esac
     done
     ;;
+  "run "*)
+    echo "dart $*" >>.fake_runs
+    case "$2" in
+      k_comments) [ -z "${FAKE_COMMENTS_FAIL:-}" ] || { echo "x.dart:1:1: line comment is not allowed"; exit 1; } ;;
+    esac
+    ;;
   *) ;;
 esac
 FAKE
@@ -53,6 +59,15 @@ cat >"$bin/gh" <<'FAKE'
 echo "${FAKE_GH_STATE:-OPEN}"
 FAKE
 chmod +x "$bin/dart" "$bin/gh"
+
+# add_pkg_script <repo> <name>: adds packages/<name>/bin/<name>.dart.
+add_pkg_script() {
+  mkdir -p "$1/packages/$2/bin"
+  printf 'void main() {}\n' >"$1/packages/$2/bin/$2.dart"
+}
+
+# ran <repo> <pattern>: true when the fake dart recorded a matching run.
+ran() { [ -f "$1/.fake_runs" ] && grep -qF -- "$2" "$1/.fake_runs"; }
 
 # new_repo: a workspace with one fully covered package `packages/a`.
 # Prints the repository path.
@@ -67,6 +82,7 @@ new_repo() {
   printf 'int one() {\n  return 1;\n}\n' >"$d/packages/a/lib/a.dart"
   printf 'void main() {}\n' >"$d/packages/a/test/a_test.dart"
   printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:2\nend_of_record\n' >"$d/packages/a/fake.lcov"
+  add_pkg_script "$d" k_comments
   echo "$d"
 }
 
@@ -179,6 +195,47 @@ FAKE_GH_FAIL=1 expect "unknown issue state only warns locally" 0 \
 r="$(new_repo)"
 FAKE_GH_FAIL=1 CI_MODE=true expect "unknown issue state fails in CI" 1 \
   "::error::packages/k_config/bin/k_config.dart not found and the state of issue #13 could not be checked" "$r"
+
+# Repository script locations and invocation.
+r="$(new_repo)"
+expect "comments package runs by name" 0 "All checks passed." "$r"
+if ! ran "$r" "dart run k_comments --root . --include **.dart --exclude .dart_tool/** --exclude **/.dart_tool/**"; then
+  echo "FAIL - comments package runs by name (not invoked as expected)"; failed=$((failed + 1))
+fi
+
+r="$(new_repo)"
+add_pkg_script "$r" k_config
+add_pkg_script "$r" k_publishers
+FAKE_GH_STATE=CLOSED expect "every script present: closed issues pass" 0 "All checks passed." "$r"
+if ! ran "$r" "dart run k_config" || ! ran "$r" "dart run k_publishers"; then
+  echo "FAIL - every script present (k_config or k_publishers not run by name)"; failed=$((failed + 1))
+fi
+
+r="$(new_repo)"
+FAKE_COMMENTS_FAIL=1 expect "comment violation fails" 1 "FAIL: comments check failed" "$r"
+
+r="$(new_repo)"
+rm -r "$r/packages/k_comments"
+expect "missing comments checker fails while #9 is open" 1 \
+  "packages/k_comments/bin/k_comments.dart not found: the comments check is required" "$r"
+
+r="$(new_repo)"
+rm -r "$r/packages/k_comments"
+printf 'void main() {}\n' >"$r/tool/check_comments.dart"
+expect "tool/check_comments.dart is not accepted" 1 "the comments check is required" "$r"
+if ran "$r" "tool/check_comments.dart"; then
+  echo "FAIL - tool/check_comments.dart was run"; failed=$((failed + 1))
+fi
+
+r="$(new_repo)"
+printf 'void main() {}\n' >"$r/tool/check_publishers.dart"
+expect "publishers: only the package location counts" 0 \
+  "packages/k_publishers/bin/k_publishers.dart not found (issue #4 is still open)" "$r"
+
+r="$(new_repo)"
+add_pkg_script "$r" k_config
+FAKE_GH_STATE=CLOSED expect "missing publishers checker fails once #4 is closed" 1 \
+  "packages/k_publishers/bin/k_publishers.dart not found but issue #4 is CLOSED" "$r"
 
 r="$(new_repo)"
 rm "$r/pubspec.yaml"

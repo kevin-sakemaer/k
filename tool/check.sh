@@ -101,34 +101,52 @@ dart format --output=none --set-exit-if-changed . \
 step "dart analyze --fatal-infos"
 dart analyze --fatal-infos || fail "dart analyze reported diagnostics"
 
-# Repository scripts introduced by other issues. Each one is skipped while
-# its issue is open, and fails the job once the issue is closed.
+# Repository scripts introduced by other issues. A check whose script is not
+# on main yet is skipped while its issue is open, and fails the job once the
+# issue is closed. A script that is already on main must exist.
+
+# run_script <file> <args>...: runs a repository script. A workspace package
+# executable (packages/<name>/bin/<name>.dart) is run by package name, because
+# `dart run <path>` cannot resolve the package's own imports from the
+# workspace root; any other file is run by path.
+run_script() {
+  local file="$1" name
+  shift
+  name="$(basename "$file" .dart)"
+  if [ "$file" = "packages/$name/bin/$name.dart" ]; then
+    dart run "$name" "$@"
+  else
+    dart run "$file" "$@"
+  fi
+}
+
+# check_script <label> <issue|required> <file> [args]...: runs <file>. When it
+# is missing, "required" fails the job; an issue number applies skip_missing.
+check_script() {
+  local label="$1" issue="$2" file="$3"
+  shift 3
+  step "$label"
+  if [ -f "$file" ]; then
+    run_script "$file" "$@" || fail "$label failed"
+  elif [ "$issue" = required ]; then
+    fail "$file not found: the $label is required"
+  else
+    skip_missing "$file" "$issue"
+  fi
+}
+
 # TODO(#13): k_config lands with PR #13.
-k_config="packages/k_config/bin/k_config.dart"
-step "k.yaml validation (k_config)"
-if [ -f "$k_config" ]; then
-  dart run "$k_config" || fail "k.yaml validation failed"
-else
-  skip_missing "$k_config" 13
-fi
+check_script "k.yaml validation (k_config)" 13 "packages/k_config/bin/k_config.dart"
 
-# TODO(#4): dependency publishers check.
-publishers="tool/check_publishers.dart"
-step "dependency publishers check"
-if [ -f "$publishers" ]; then
-  dart run "$publishers" || fail "dependency publishers check failed"
-else
-  skip_missing "$publishers" 4
-fi
+# TODO(#4): dependency publishers check; #4 may change this location.
+check_script "dependency publishers check" 4 "packages/k_publishers/bin/k_publishers.dart"
 
-# TODO(#9): ///-only comments check.
-comments="tool/check_comments.dart"
-step "comments check"
-if [ -f "$comments" ]; then
-  dart run "$comments" || fail "comments check failed"
-else
-  skip_missing "$comments" 9
-fi
+# ///-only comments check (#9, package from #20), on main: always required.
+# It scans every .dart file except the generated .dart_tool directories.
+# TODO(#13): read the scan globs and comments.exceptions from k.yaml through
+# k_config once #13 lands; k.yaml has no comments section on main yet.
+check_script "comments check" required "packages/k_comments/bin/k_comments.dart" \
+  --root . --include '**.dart' --exclude '.dart_tool/**' --exclude '**/.dart_tool/**'
 
 step "workspace packages"
 ws_json="$(dart pub workspace list --json)" \
