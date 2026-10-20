@@ -90,7 +90,8 @@ new_repo() {
   cp "$check" "$d/tool/check.sh"
   mkdir -p "$d/.github/scripts"
   for t in .github/scripts/review_gate_test.sh .github/scripts/auto_merge_test.sh \
-    .github/scripts/github_guard_test.sh .github/scripts/close_issues_test.sh tool/check_test.sh; do
+    .github/scripts/github_guard_test.sh .github/scripts/close_issues_test.sh \
+    .github/scripts/closing_keywords_test.sh tool/check_test.sh; do
     printf '#!/usr/bin/env bash\nexit 0\n' >"$d/$t"
   done
   printf 'name: ws\nworkspace:\n  - packages/a\n' >"$d/pubspec.yaml"

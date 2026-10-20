@@ -10,7 +10,7 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
 - Every rule must live in a required CI check. Checks still to come, each tracked in its own issue and made required on `main` when done:
   - `///`-only comments: #9 (runs in the `test` check, settings in the `comments` section of k.yaml);
   - dependency publishers: #4 (runs in the `test` check, exceptions in the `dependencies` section of k.yaml);
-  - no closing keywords in partial PRs (Pre-commit checklist point 7): #26.
+  - no closing keywords in partial PRs (Pre-commit checklist point 7): #26 (workflow added; still to be made required on `main`).
 
 ## Pre-commit checklist
 Mandatory before every commit and push (#16). The Reviewer may reject without detailed review any PR failing one of these points.
@@ -21,7 +21,7 @@ Mandatory before every commit and push (#16). The Reviewer may reject without de
 4. `dart test` with 100% coverage (or the k.yaml override).
 5. Same scripts as CI run locally (k_config, publishers check, comments check).
 6. Self-review of `git diff origin/main` against the issue acceptance criteria and Reviewer rules: English only, `///` comments only, no hard-coded values outside k.yaml.
-7. Issue references: a partial PR (`Part of #N` or `Refs #N`) contains no closing keyword for that issue anywhere (title, description, commit messages): no `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` or `resolved` followed by `#N`. `Closes #N` is allowed only when the PR fully delivers issue #N.
+7. Issue references: a partial PR (`Part of #N` or `Refs #N`) contains no closing keyword for that issue anywhere (title, description, commit messages): no `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` or `resolved` followed by `#N`. `Closes #N` is allowed only when the PR fully delivers issue #N. Automated by the `closing-keywords` check (#26): case-insensitive, it also matches `GH-N`, `owner/repo#N`, markdown links and issue or pull URLs (with or without scheme or `www`), and once the PR is partial any closing keyword fails. Stricter than GitHub, one rule for both the partial marker and the keywords: everything is scanned, fenced code blocks and inline code included (backticks, brackets, parentheses, angle brackets, `*` and `~` are ignored; a markdown link `[text](url)` counts as its URL then its text). A reference in parentheses, `(#N)` or `(owner/repo#N)`, is not a closing reference, so squash suffixes like `typo fix (#12)` and scopes like `fix(#12):` pass. Limit: `closingIssuesReferences` also includes issues linked by hand in the PR's Development panel, which a text check cannot see.
 8. No stacked PRs (#33): the PR targets `main` (`gh pr create --base main`), never another PR's branch.
 9. Draft-first (#27): the PR was opened with `gh pr create --draft` and is marked ready (`gh pr ready`) only once every CI check is green; if a push turns CI red, convert it back with `gh pr ready --undo`.
 

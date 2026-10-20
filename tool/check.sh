@@ -34,8 +34,9 @@ run() { "$@" || fail "command failed: $*"; }
 [ -f k.yaml ] || fail "k.yaml is required"
 
 step "bash tests"
-for t in .github/scripts/review_gate_test.sh .github/scripts/auto_merge_test.sh .github/scripts/github_guard_test.sh \
-  .github/scripts/close_issues_test.sh tool/check_test.sh; do
+for t in .github/scripts/review_gate_test.sh .github/scripts/auto_merge_test.sh \
+  .github/scripts/github_guard_test.sh .github/scripts/close_issues_test.sh \
+  .github/scripts/closing_keywords_test.sh tool/check_test.sh; do
   [ -f "$t" ] || fail "bash test not found: $t"
   bash "$t" || fail "bash tests failed: $t"
 done
