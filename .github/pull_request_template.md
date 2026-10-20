@@ -16,13 +16,10 @@ Closes #
 
 - [ ] Everything (title, description, commits, code comments, docs) is in English
 - [ ] Only `///` doc comments in Dart code (no `//`, `/* */`, `/** */`, no `// ignore:`)
-- [ ] Formatting passes: `dart format --set-exit-if-changed .`
-- [ ] Analysis passes: `dart analyze --fatal-infos`
 - [ ] Tests added/updated
-- [ ] Tests pass: `dart test`
-- [ ] format/analyze/test pass locally
+- [ ] format/analyze/test pass locally: `dart format --set-exit-if-changed .`, `dart analyze --fatal-infos`, `dart test`
 - [ ] Coverage meets the threshold configured in `k.yaml`
-- [ ] No direct dependency outside dart.dev/tools.dart.dev/labs.dart.dev (exceptions listed in `k.yaml` with a reason, approved via Grok Bot)
+- [ ] No direct dependency outside dart.dev/tools.dart.dev/labs.dart.dev. An exception needs both an entry in `k.yaml` with an explicit reason **and** approval via Grok Bot, linked in this PR
 - [ ] Settings live in `k.yaml`, nothing hard-coded
 - [ ] All acceptance criteria of the linked issue are met
 - [ ] `AGENTS.md` updated if the workflow or rules changed
