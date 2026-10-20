@@ -145,18 +145,20 @@ final class _Validator {
     return hours == null ? null : CloseIssuesConfig(lookbackHours: hours);
   }
 
-  int? lookbackHours(Object? value, String path) {
+  int? lookbackHours(Object? value, String path) =>
+      boundedInteger(value, path, CloseIssuesConfig.maxLookbackHours);
+
+  int? registryTimeoutSeconds(Object? value, String path) =>
+      boundedInteger(value, path, DependenciesConfig.maxRegistryTimeoutSeconds);
+
+  int? boundedInteger(Object? value, String path, int max) {
     final String? source = sourceText[path];
     final String text = source == null || source.isEmpty ? '$value' : source;
     if (value is! int ||
         !_decimalInteger.hasMatch(text) ||
         value < 1 ||
-        value > CloseIssuesConfig.maxLookbackHours) {
-      error(
-        path,
-        'must be an integer from 1 to '
-        '${CloseIssuesConfig.maxLookbackHours}, found $text.',
-      );
+        value > max) {
+      error(path, 'must be an integer from 1 to $max, found $text.');
       return null;
     }
     return value;
@@ -241,20 +243,30 @@ final class _Validator {
   DependenciesConfig? dependencies(Object? value, String path) {
     final Map<String, Object?>? map = strictMap(value, path, const {
       'exceptions',
+      'registry_timeout_seconds',
     });
     if (map == null) {
       return null;
     }
+    final int? timeout = field(
+      map,
+      path,
+      'registry_timeout_seconds',
+      registryTimeoutSeconds,
+    );
     final Map<String, DependencyException>? exceptions = field(
       map,
       path,
       'exceptions',
       (value, path) => entries(value, path, dependencyException),
     );
-    if (exceptions == null) {
+    if (timeout == null || exceptions == null) {
       return null;
     }
-    return DependenciesConfig(exceptions: exceptions);
+    return DependenciesConfig(
+      registryTimeoutSeconds: timeout,
+      exceptions: exceptions,
+    );
   }
 
   DependencyException? dependencyException(

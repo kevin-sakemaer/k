@@ -9,6 +9,7 @@ DirectDependency dep(String name, [DependencySource s = .pubDev]) =>
 
 DependenciesConfig config([List<String> excepted = const []]) =>
     DependenciesConfig(
+      registryTimeoutSeconds: 30,
       exceptions: {
         for (final name in excepted)
           name: const DependencyException(reason: 'r', approvedBy: 'Kevin'),

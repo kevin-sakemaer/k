@@ -54,7 +54,6 @@ void main() {
         'labs.dart.dev',
       ]);
       expect(DependenciesConfig.registryUrl, 'https://pub.dev');
-      expect(DependenciesConfig.registryTimeout, const Duration(seconds: 30));
       expect(DependenciesConfig.hostedAliases, [
         'https://pub.dev',
         'https://pub.dartlang.org',
@@ -77,6 +76,8 @@ void main() {
       expect(config.comments.exceptions.single.reason, isNotEmpty);
       expect(config.closeIssues.lookbackHours, 72);
       expect(config.workflows.maxTimeoutMinutes, 20);
+      expect(config.dependencies.registryTimeoutSeconds, 30);
+      expect(config.dependencies.registryTimeout, const Duration(seconds: 30));
       final WriteScopeException scope = config.workflows.writeScopes.single;
       expect(
         (scope.workflow, scope.job, scope.scope, scope.reason),
@@ -102,7 +103,7 @@ void main() {
     test('accepts empty overrides and exceptions', () {
       const source = '''
 coverage: {default: 100, overrides: {}, tool_version: 1.16.0}
-dependencies: {exceptions: {}}
+dependencies: {exceptions: {}, registry_timeout_seconds: 30}
 comments: {include: ["**.dart"], exclude: [], exceptions: []}
 close_issues: {lookback_hours: 72}
 workflows: {max_timeout_minutes: 20, write_scopes: []}
@@ -113,7 +114,7 @@ workflows: {max_timeout_minutes: 20, write_scopes: []}
 
     test('accepts the bounds 0 and 100', () {
       const empty =
-          'dependencies: {exceptions: {}}\n'
+          'dependencies: {exceptions: {}, registry_timeout_seconds: 30}\n'
           'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
           'close_issues: {lookback_hours: 72}\n'
           'workflows: {max_timeout_minutes: 20, write_scopes: []}\n';
@@ -269,6 +270,42 @@ workflows: {max_timeout_minutes: 20, write_scopes: []}
           ),
         ],
       ),
+      'a missing registry timeout': (
+        edit('  registry_timeout_seconds: 30\n', ''),
+        [
+          message(
+            'k.yaml: dependencies.registry_timeout_seconds: '
+            'missing required key.',
+          ),
+        ],
+      ),
+      'a zero registry timeout': (
+        edit('registry_timeout_seconds: 30', 'registry_timeout_seconds: 0'),
+        [
+          message(
+            'k.yaml: dependencies.registry_timeout_seconds: '
+            'must be an integer from 1 to 300, found 0.',
+          ),
+        ],
+      ),
+      'a too long registry timeout': (
+        edit('registry_timeout_seconds: 30', 'registry_timeout_seconds: 301'),
+        [
+          message(
+            'k.yaml: dependencies.registry_timeout_seconds: '
+            'must be an integer from 1 to 300, found 301.',
+          ),
+        ],
+      ),
+      'a registry timeout that is not an integer': (
+        edit('registry_timeout_seconds: 30', 'registry_timeout_seconds: "30"'),
+        [
+          message(
+            'k.yaml: dependencies.registry_timeout_seconds: '
+            'must be an integer from 1 to 300, found "30".',
+          ),
+        ],
+      ),
       'a missing tool version': (
         edit('  tool_version: 1.16.0\n', ''),
         ['k.yaml: coverage.tool_version: missing required key.'],
@@ -311,7 +348,7 @@ workflows: {max_timeout_minutes: 20, write_scopes: []}
       ),
       'a missing overrides key': (
         'coverage: {default: 100, tool_version: 1.16.0}\n'
-            'dependencies: {exceptions: {}}\n'
+            'dependencies: {exceptions: {}, registry_timeout_seconds: 30}\n'
             'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
             'close_issues: {lookback_hours: 72}\n'
             'workflows: {max_timeout_minutes: 20, write_scopes: []}\n',
@@ -511,7 +548,7 @@ workflows: {max_timeout_minutes: 20, write_scopes: []}
         [
           message(
             'k.yaml: dependencies.allowed_publishers: unknown key. '
-            'Allowed keys: exceptions.',
+            'Allowed keys: exceptions, registry_timeout_seconds.',
           ),
         ],
       ),
@@ -589,7 +626,7 @@ workflows: {max_timeout_minutes: 20, write_scopes: []}
       ),
       'dependency exceptions that are not a mapping': (
         'coverage: {default: 100, overrides: {}, tool_version: 1.16.0}\n'
-            'dependencies: {exceptions: []}\n'
+            'dependencies: {exceptions: [], registry_timeout_seconds: 30}\n'
             'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
             'close_issues: {lookback_hours: 72}\n'
             'workflows: {max_timeout_minutes: 20, write_scopes: []}\n',
@@ -605,7 +642,7 @@ workflows: {max_timeout_minutes: 20, write_scopes: []}
       ),
       'a coverage section that is not a mapping': (
         'coverage: 100\n'
-            'dependencies: {exceptions: {}}\n'
+            'dependencies: {exceptions: {}, registry_timeout_seconds: 30}\n'
             'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
             'close_issues: {lookback_hours: 72}\n'
             'workflows: {max_timeout_minutes: 20, write_scopes: []}\n',

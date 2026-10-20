@@ -10,6 +10,7 @@ coverage:
   overrides: {}
 dependencies:
   exceptions: {}
+  registry_timeout_seconds: 30
 close_issues:
   lookback_hours: 72
 comments:

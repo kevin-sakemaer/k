@@ -35,6 +35,7 @@ void main() {
     client = PubDevClient(
       HttpClient(),
       baseUri: Uri.http('127.0.0.1:${server.port}'),
+      timeout: const Duration(seconds: 30),
     );
   });
 
@@ -76,6 +77,7 @@ void main() {
     final offline = PubDevClient(
       HttpClient(),
       baseUri: Uri.http('127.0.0.1:$port'),
+      timeout: const Duration(seconds: 30),
     );
     addTearDown(offline.close);
     await expectLater(
@@ -122,6 +124,6 @@ void main() {
   });
 
   test('defaults to pub.dev', () {
-    PubDevClient(HttpClient()).close();
+    PubDevClient(HttpClient(), timeout: const Duration(seconds: 1)).close();
   });
 }

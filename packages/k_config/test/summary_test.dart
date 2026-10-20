@@ -16,6 +16,7 @@ void main() {
           },
         ),
         dependencies: DependenciesConfig(
+          registryTimeoutSeconds: 30,
           exceptions: {
             'third_party': DependencyException(
               reason: 'Needed.',
@@ -63,6 +64,8 @@ Coverage tool: package:coverage 1.16.0.
 
 Allowed publishers: dart.dev, tools.dart.dev, labs.dart.dev.
 
+Registry timeout: 30 seconds.
+
 | Package | Reason | Approved by |
 | --- | --- | --- |
 | third_party | Needed. | Kevin. |
@@ -95,7 +98,10 @@ Maximum job timeout: 20 minutes.
           overrides: {},
           toolVersion: '1.16.0',
         ),
-        dependencies: DependenciesConfig(exceptions: {}),
+        dependencies: DependenciesConfig(
+          registryTimeoutSeconds: 1,
+          exceptions: {},
+        ),
         comments: CommentsConfig(
           include: ['**.dart'],
           exclude: [],

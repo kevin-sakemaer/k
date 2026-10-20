@@ -4,10 +4,15 @@ import 'package:k_publishers/k_publishers.dart';
 
 /// Checks the pub.dev publisher of every direct dependency.
 Future<void> main(List<String> arguments) async {
-  final client = PubDevClient(HttpClient());
+  PubDevClient? client;
   try {
-    exitCode = await runCli(arguments, stdout, stderr, client);
+    exitCode = await runCli(
+      arguments,
+      stdout,
+      stderr,
+      (timeout) => client = PubDevClient(HttpClient(), timeout: timeout),
+    );
   } finally {
-    client.close();
+    client?.close();
   }
 }

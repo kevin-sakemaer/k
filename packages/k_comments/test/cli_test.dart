@@ -6,7 +6,7 @@ import 'package:test/test.dart';
 /// A valid `k.yaml` whose comment settings are given by [comments].
 String kYaml(String comments) =>
     'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
-    'dependencies: {exceptions: {}}\n'
+    'dependencies: {exceptions: {}, registry_timeout_seconds: 30}\n'
     'close_issues: {lookback_hours: 72}\n'
     'comments: $comments\n'
     'workflows: {max_timeout_minutes: 20, write_scopes: []}\n';

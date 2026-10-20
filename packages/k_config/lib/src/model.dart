@@ -68,7 +68,10 @@ final class CoverageOverride {
 /// Settings of the direct dependency publisher check.
 final class DependenciesConfig {
   /// Creates dependency settings.
-  const new({required this.exceptions});
+  const new({required this.registryTimeoutSeconds, required this.exceptions});
+
+  /// Largest accepted value of [registryTimeoutSeconds]: five minutes.
+  static const int maxRegistryTimeoutSeconds = 300;
 
   /// Verified pub.dev publishers whose packages may be direct dependencies.
   ///
@@ -87,12 +90,6 @@ final class DependenciesConfig {
   /// configurable registry would bypass [allowedPublishers].
   static const String registryUrl = 'https://pub.dev';
 
-  /// Longest time allowed to connect to [registryUrl] and to receive a whole
-  /// publisher response. A lookup that takes longer fails the check.
-  ///
-  /// The value is fixed and cannot be changed from `k.yaml`.
-  static const Duration registryTimeout = Duration(seconds: 30);
-
   /// `hosted` URLs, without a trailing slash, that name the registry at
   /// [registryUrl]. A dependency hosted anywhere else needs an entry in
   /// [exceptions].
@@ -102,6 +99,15 @@ final class DependenciesConfig {
     'https://pub.dev',
     'https://pub.dartlang.org',
   ];
+
+  /// Longest time, in seconds, allowed to connect to [registryUrl] and to
+  /// receive a whole publisher response, from
+  /// `dependencies.registry_timeout_seconds`. A lookup that takes longer fails
+  /// the check.
+  final int registryTimeoutSeconds;
+
+  /// [registryTimeoutSeconds] as a [Duration].
+  Duration get registryTimeout => Duration(seconds: registryTimeoutSeconds);
 
   /// Approved direct dependencies from other publishers, keyed by package
   /// name.
