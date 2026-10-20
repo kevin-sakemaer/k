@@ -67,8 +67,7 @@ for t in .github/scripts/review_gate_test.sh tool/check_test.sh; do
 done
 
 if [ ! -f pubspec.yaml ]; then
-  skip "no pubspec.yaml: no Dart checks to run."
-  exit 0
+  fail "pubspec.yaml is missing at the repository root"
 fi
 
 # Coverage threshold: coverage.default in k.yaml, a YAML integer in [0, 100].
@@ -136,22 +135,31 @@ ws_json="$(dart pub workspace list --json)" \
   || fail "'dart pub workspace list --json' failed"
 pkgs="$(jq -er '.packages[].path' <<<"$ws_json")" \
   || fail "could not read package paths from 'dart pub workspace list --json'"
+[ -n "$pkgs" ] || fail "'dart pub workspace list --json' listed no packages"
 
 packages=()
+members=0
+root_tests=false
 while IFS= read -r pkg; do
   [ -n "$pkg" ] || continue
   abs="$(cd "$pkg" && pwd)" || fail "workspace package not found: $pkg"
   if [ "$abs" = "$root" ]; then pkg="."; else pkg="${abs#"$root"/}"; fi
   if [ "$pkg" = "." ] && [ ! -d lib ]; then
-    echo "Workspace root has no lib/: not a tested package."
+    if [ -n "$(find test -name '*_test.dart' -print -quit 2>/dev/null)" ]; then
+      echo "Workspace root has no lib/: its tests run without coverage."
+      root_tests=true
+    else
+      echo "Workspace root has no lib/ and no tests: not a tested package."
+    fi
     continue
   fi
+  [ "$pkg" = "." ] || members=$((members + 1))
   if [ -z "$(find "$pkg/test" -name '*_test.dart' -print -quit 2>/dev/null)" ]; then
     fail "package $pkg has no test/**/*_test.dart: every package needs tests"
   fi
   packages+=("$pkg")
 done <<<"$pkgs"
-[ "${#packages[@]}" -gt 0 ] || fail "no testable package found in the workspace"
+[ "$members" -gt 0 ] || fail "no workspace member package to test (only the root was listed)"
 printf 'Packages: %s\n' "${packages[*]}"
 
 if [ "$fast" = true ]; then
@@ -174,6 +182,11 @@ executable_lines() {
     { n++ } END { print n + 0 }
   ' "$1"
 }
+
+if [ "$root_tests" = true ]; then
+  step "dart test (workspace root, no lib/)"
+  dart test || fail "dart test failed in the workspace root"
+fi
 
 run dart pub global activate coverage "$coverage_version" >/dev/null
 

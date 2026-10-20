@@ -1,0 +1,6 @@
+# Global quality configuration of this repository.
+# Only coverage.default is read for now (by tool/check.sh); the full schema
+# and its validation (packages/k_config) land with #13.
+coverage:
+  default: 100
+  overrides: {}
