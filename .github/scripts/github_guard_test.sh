@@ -184,6 +184,15 @@ for p in pubspec.yaml pubspec.lock pubspec_overrides.yaml packages/k_comments/pu
   check 1 "  $p"
 done
 
+# The guard matches paths, not content: a non-checker member pubspec.yaml whose
+# diff adds dependency_overrides (applied to the whole workspace, so to the
+# checkers too) is refused without the label, whatever the diff contains.
+new_case "dependency_overrides added in packages/k_core/pubspec.yaml without label fails" opened "packages/k_core/pubspec.yaml"
+check 1 "  packages/k_core/pubspec.yaml" kept
+
+new_case "a new workspace package without label fails" opened "packages/k_new/pubspec.yaml packages/k_new/lib/k_new.dart"
+check 1 "  packages/k_new/pubspec.yaml"
+
 new_case "names similar to pubspec files are not protected" opened "docs/pubspec.yaml.md packages/k_core/pubspec.yaml.bak packages/a/my_pubspec.yaml pubspec.yaml.bak pubspec.lock.bak packages/a/my_pubspec.lock packages/a/pubspec_overrides.yaml.bak"
 check 0 "No protected path changed."
 
