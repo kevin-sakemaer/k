@@ -6,24 +6,15 @@ name: review-gate
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled]
-  # TODO(#15 follow-up): the pull_request trigger is temporary. It lets this
-  # gate run on the PR that introduces pull_request_target (main's copy of this
-  # file has no such trigger yet). Remove it in a follow-up PR once
-  # pull_request_target is on main. Under both events the job checks out only
-  # .github/scripts at the base SHA, never the PR head.
-  pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions: {}
 
-# The event name is part of the group, so pull_request and pull_request_target
-# runs never cancel or replace each other.
 # Each synchronize or reopened run gets its own group (github.run_id), so no later event can
 # cancel or replace it while it is pending: the push always removes review:approved.
 # Label runs share one group per PR. A pending run in a group can still be replaced
 # by a newer one, so the freshness check below does not rely on this setting.
 concurrency:
-  group: review-gate-${{ github.event_name }}-${{ github.event.pull_request.number }}-${{ (github.event.action == 'synchronize' || github.event.action == 'reopened') && github.run_id || 'label' }}
+  group: review-gate-${{ github.event.pull_request.number }}-${{ (github.event.action == 'synchronize' || github.event.action == 'reopened') && github.run_id || 'label' }}
   cancel-in-progress: false
 
 jobs:
@@ -36,12 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Base branch tip, never the PR head. Under pull_request_target,
-          # github.sha is the tip of the base branch, so workflow and scripts come
-          # from the same commit. Under the temporary pull_request trigger,
-          # github.sha is the merge commit (it contains PR code), so the base
-          # branch is fetched by name instead (its current tip).
-          ref: ${{ github.event_name == 'pull_request_target' && github.sha || github.event.pull_request.base.ref }}
+          # github.sha is the tip of the base branch under pull_request_target,
+          # so workflow and scripts come from the same commit, never the PR head.
+          ref: ${{ github.sha }}
           persist-credentials: false
           sparse-checkout: .github/scripts
       - name: Check review labels
