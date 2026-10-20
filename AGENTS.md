@@ -82,7 +82,7 @@ coverage:
   default: 100              # Integer from 0 to 100, line coverage in percent.
   tool_version: 1.16.0      # Exact package:coverage version, MAJOR.MINOR.PATCH.
   overrides:                # Required, may be {}.
-    some_package:           # Must be a workspace package.
+    some_package:           # A workspace package, or the root package.
       threshold: 95         # Integer from 0 to 100, lower than coverage.default.
       reason: "Why this package cannot reach the default."
 dependencies:
@@ -96,7 +96,7 @@ comments:
       reason: "Why this file needs non-documentation comments."
 ```
 
-- `coverage`: `default` applies to every package; an override lowers it for one package and must be strictly lower than `default`. `tool/check.sh` (#5) enforces, per package, the line coverage of `lib/` against its override or `coverage.default`, read through `k_config --get coverage.thresholds`; below the threshold the required `test` check fails. The coverage of each package is added to the job summary, next to the k.yaml summary that lists every active override with its reason. `tool_version` is the exact version of `package:coverage` (tools.dart.dev) that `tool/check.sh` activates to build the lcov report.
+- `coverage`: `default` applies to every package; an override lowers it for one package and must be strictly lower than `default`. `tool/check.sh` (#5) enforces, per package, the line coverage of `lib/` against its override or `coverage.default`, read through `k_config --get coverage.thresholds`; below the threshold the required `test` check fails. Every measured package gets a threshold, including the workspace root when it has a `lib/`. The coverage of each package is added to the job summary, even when the package fails, next to the k.yaml summary that lists every active override with its reason. The lcov report of each package is uploaded as the `lcov-<PR>-<sha>` artifact of the `test` job, even when the job fails. `tool_version` is the exact version of `package:coverage` (tools.dart.dev) that `tool/check.sh` activates to build the lcov report.
 - `dependencies`: the publishers `dart.dev`, `tools.dart.dev` and `labs.dart.dev` are fixed in `k_config` and cannot be changed from `k.yaml` (an `allowed_publishers` key fails as an unknown key). Any other direct dependency needs an entry in `exceptions`.
 - `comments`: files allowed to contain non-documentation comments.
 

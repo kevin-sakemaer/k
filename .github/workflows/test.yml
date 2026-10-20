@@ -28,3 +28,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: bash tool/check.sh
+      - name: Upload the lcov reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lcov-${{ github.event.pull_request.number }}-${{ github.sha }}
+          # tool/check.sh writes one lcov.info per package under .dart_tool.
+          path: .dart_tool/k_check/*/lcov.info
+          include-hidden-files: true
+          # A run that fails before the coverage step has no report.
+          if-no-files-found: warn
+          retention-days: 14
