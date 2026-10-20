@@ -126,8 +126,17 @@ kget() {
   printf '%s' "$value"
 }
 
-# Line coverage threshold of every package, in percent.
-threshold="$(kget coverage.default)" || exit 1
+# Line coverage threshold of every package, in percent (#5): one
+# "<package>\t<threshold>" line per workspace package, from its
+# coverage.overrides entry or coverage.default.
+thresholds="$(kget coverage.thresholds)" || exit 1
+printf '%s\n' "$thresholds"
+
+# threshold_of <package name>: the threshold printed by k_config.
+threshold_of() {
+  awk -F '\t' -v p="$1" '$1 == p { print $2; found = 1 } END { exit !found }' \
+    <<<"$thresholds"
+}
 # Exact version of package:coverage (publisher tools.dart.dev) used to build
 # the lcov report, so that local and CI runs use the same tool.
 coverage_version="$(kget coverage.tool_version)" || exit 1
@@ -145,14 +154,15 @@ check_script "comments check" required "packages/k_comments/bin/k_comments.dart"
 step "workspace packages"
 ws_json="$(dart pub workspace list --json)" \
   || fail "'dart pub workspace list --json' failed"
-pkgs="$(jq -er '.packages[].path' <<<"$ws_json")" \
+pkgs="$(jq -er '.packages[] | "\(.path)\t\(.name)"' <<<"$ws_json")" \
   || fail "could not read package paths from 'dart pub workspace list --json'"
 [ -n "$pkgs" ] || fail "'dart pub workspace list --json' listed no packages"
 
 packages=()
+names=()
 members=0
 root_tests=false
-while IFS= read -r pkg; do
+while IFS=$'\t' read -r pkg name; do
   [ -n "$pkg" ] || continue
   abs="$(cd "$pkg" && pwd)" || fail "workspace package not found: $pkg"
   if [ "$abs" = "$root" ]; then pkg="."; else pkg="${abs#"$root"/}"; fi
@@ -170,6 +180,7 @@ while IFS= read -r pkg; do
     fail "package $pkg has no test/**/*_test.dart: every package needs tests"
   fi
   packages+=("$pkg")
+  names+=("$name")
 done <<<"$pkgs"
 [ "$members" -gt 0 ] || fail "no workspace member package to test (only the root was listed)"
 printf 'Packages: %s\n' "${packages[*]}"
@@ -201,9 +212,12 @@ fi
 
 run dart pub global activate coverage "$coverage_version" >/dev/null
 
-# TODO(#5): per-package coverage.overrides are not applied yet; only
-# coverage.default is enforced here.
-for pkg in "${packages[@]}"; do
+for i in "${!packages[@]}"; do
+  pkg="${packages[$i]}"
+  threshold="$(threshold_of "${names[$i]}")" \
+    || fail "k_config printed no coverage threshold for package ${names[$i]}"
+  [[ "$threshold" =~ ^(0|[1-9][0-9]*)$ ]] && [ "$threshold" -le 100 ] \
+    || fail "invalid coverage threshold for ${names[$i]}: $threshold"
   step "dart test with coverage ($pkg, threshold ${threshold}%)"
   out="$root/.dart_tool/k_check/$(tr '/.' '__' <<<"$pkg")"
   rm -rf "$out"
@@ -240,10 +254,14 @@ for pkg in "${packages[@]}"; do
   [ "$total" -gt 0 ] || fail "coverage: no executable lines in $pkg/lib"
   pct="$(awk -v h="$hit" -v t="$total" 'BEGIN { printf "%.2f", 100 * h / t }')"
   echo "Coverage $pkg: ${pct}% (${hit}/${total} lines), required ${threshold}%"
+  # Written before the comparison so that a failing package is listed too.
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    echo "- Coverage $pkg: ${pct}% (${hit}/${total} lines), required ${threshold}%" \
+      >>"$GITHUB_STEP_SUMMARY"
+  fi
   awk -v h="$hit" -v t="$total" -v m="$threshold" 'BEGIN { exit !(100 * h >= m * t) }' \
     || fail "coverage of $pkg is ${pct}%, below the threshold ${threshold}%"
 done
-
 
 echo
 echo "All checks passed."
