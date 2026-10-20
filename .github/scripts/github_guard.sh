@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # GitHub guard for pull requests: fails when the PR changes a protected path
 # (the gate itself: .github/, tool/check.sh, tool/*_test.sh, tool/hooks/,
-# analysis_options.yaml, k.yaml) unless the label ci:github-change-approved is
+# analysis_options.yaml and k.yaml at any depth, since the analyzer uses the
+# nearest analysis_options.yaml) unless the label ci:github-change-approved is
 # set AND fresh: its latest "labeled" event must be newer than the push of the
 # current head (same rule as review_gate.sh, shared in freshness.sh). Every
 # push (synchronize) or reopen removes that label. Fails closed on any doubt or
@@ -44,7 +45,7 @@ api() {
 
 is_protected() {
   case "$1" in
-    .github/* | tool/check.sh | tool/*_test.sh | tool/hooks/* | analysis_options.yaml | k.yaml) return 0 ;;
+    .github/* | tool/check.sh | tool/*_test.sh | tool/hooks/* | analysis_options.yaml | */analysis_options.yaml | k.yaml | */k.yaml) return 0 ;;
     *) return 1 ;;
   esac
 }

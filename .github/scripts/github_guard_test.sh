@@ -121,7 +121,19 @@ for p in tool/check.sh tool/check_test.sh tool/hooks/pre-push analysis_options.y
   check 1 "  $p"
 done
 
-new_case "other tool files are not protected" opened "tool/install_hooks.sh packages/a/k.yaml"
+for p in packages/k_core/analysis_options.yaml a/b/analysis_options.yaml packages/a/k.yaml; do
+  new_case "nested $p without label fails" opened "$p"
+  check 1 "  $p"
+done
+
+new_case "nested analysis_options.yaml with fresh label passes" labeled "packages/k_core/analysis_options.yaml" "$L"
+fresh
+check 0 "Approved by label" kept
+
+new_case "similar analysis files are not protected" opened "analysis_options.yaml.bak docs/analysis_options.md packages/a/my_analysis_options.yaml packages/a/k.yaml.bak"
+check 0 "No protected path changed."
+
+new_case "other tool files are not protected" opened "tool/install_hooks.sh"
 check 0 "No protected path changed."
 
 new_case "fresh label passes" labeled ".github/CODEOWNERS" "$L"
