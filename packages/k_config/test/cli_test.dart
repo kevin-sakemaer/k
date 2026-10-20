@@ -107,6 +107,37 @@ void main() {
         expect(err.toString(), isEmpty);
       });
 
+      test('prints the override or the default of every package', () {
+        final String root = createRepository().path;
+
+        expect(
+          runCli(['--get', 'coverage.thresholds', root], out: out, err: err),
+          0,
+        );
+        expect(out.toString(), 'alpha\t95\nbeta\t100\n');
+      });
+
+      test('fails on an override without reason', () {
+        final String root = createRepository(
+          files: {
+            'k.yaml': validConfig.replaceFirst(
+              '      reason: "Generated bindings cannot be exercised."\n',
+              '',
+            ),
+          },
+        ).path;
+
+        expect(
+          runCli(['--get', 'coverage.thresholds', root], out: out, err: err),
+          1,
+        );
+        expect(out.toString(), isEmpty);
+        expect(
+          err.toString(),
+          contains('coverage.overrides.alpha.reason: missing required key.'),
+        );
+      });
+
       test('reads a flow style coverage section', () {
         const source =
             'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
@@ -147,7 +178,7 @@ void main() {
         expect(
           err.toString(),
           'k_config: unsupported key "coverage" for --get. Supported keys: '
-          'coverage.default, coverage.tool_version.\n',
+          'coverage.default, coverage.thresholds, coverage.tool_version.\n',
         );
       });
 
