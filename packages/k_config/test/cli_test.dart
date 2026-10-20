@@ -114,7 +114,24 @@ void main() {
           runCli(['--get', 'coverage.thresholds', root], out: out, err: err),
           0,
         );
-        expect(out.toString(), 'alpha\t95\nbeta\t100\n');
+        expect(out.toString(), 'alpha\t95\nbeta\t100\nworkspace_root\t100\n');
+      });
+
+      test('applies an override to the workspace root', () {
+        final String root = createRepository(
+          files: {
+            'k.yaml': validConfig.replaceFirst(
+              '    alpha:',
+              '    workspace_root:',
+            ),
+          },
+        ).path;
+
+        expect(
+          runCli(['--get', 'coverage.thresholds', root], out: out, err: err),
+          0,
+        );
+        expect(out.toString(), 'alpha\t100\nbeta\t100\nworkspace_root\t95\n');
       });
 
       test('fails on an override without reason', () {
