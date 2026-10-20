@@ -135,6 +135,16 @@ text 1 'Part of [#1](https://github.com/o/r/issues/1), Fixes #1'
 text 1 'Refs GH-1, Fixes #1'
 text 0 'Fixes `#1`'
 text 0 "Part of #1, prefixes the fixture"
+# A parenthesized reference is not a closing reference (squash, scope).
+text 0 $'docs: typo fix (#12)\nPart of #26'
+text 0 $'chore: apply review fixes (#40)\nPart of #26'
+text 0 $'feat: resolve (#7)\nPart of #26'
+text 0 $'Revert "docs: typo fix (#12)"\nPart of #26'
+text 0 $'fix(#12): typo\nPart of #26'
+text 0 $'ci: lint fix (#40)\nPart of #26'
+text 0 $'Fix (o/r#12)\nPart of #26'
+text 1 $'docs: typo fix (#12)\nPart of #26, Fixes #26'
+text 1 'Part of #1, Fixes [here](https://github.com/o/r/issues/1)'
 
 # Negatives.
 text 0 ""

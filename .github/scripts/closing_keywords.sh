@@ -10,9 +10,17 @@
 #
 # One rule, stricter than GitHub, applied to both the partial marker and the
 # closing keywords: everything is scanned, including fenced code blocks and
-# inline code. Before matching, the markdown characters ` [ ] ( ) < > * ~ are
-# replaced by spaces, so code spans, links, autolinks and emphasis cannot hide
-# a reference. Only the first reference after a keyword is needed to fail.
+# inline code. Before matching, in this order:
+# - a markdown link [text](url) becomes "url text";
+# - a reference wrapped in parentheses, (#N) or (owner/repo#N), is removed,
+#   as GitHub does not close on it: squash suffixes "typo fix (#12)" and
+#   scopes "fix(#12): typo" are not closing keywords;
+# - the characters ` [ ] ( ) < > * ~ become spaces, so code spans, autolinks
+#   and emphasis cannot hide a reference.
+# Only the first reference after a keyword is needed to fail.
+#
+# Limit: closingIssuesReferences also holds issues linked by hand in the
+# Development panel of the PR; a text check cannot see those links.
 #
 # Required environment: REPO (owner/name), PR (number).
 # GH can point to another gh binary; tests put a fake gh first in PATH.
@@ -48,7 +56,10 @@ api() {
 check_text() {
   local partial closing text
   # Markdown syntax must not hide a reference (see the header).
-  text=$(printf '%s\n' "$1" | tr '`[]()<>*~' '         ')
+  text=$(printf '%s\n' "$1" |
+    sed -E -e 's/\[([^]]*)\]\(([^)]*)\)/ \2 \1 /g' \
+      -e "s@\\((#[0-9]+|$NAME/$NAME#[0-9]+)\\)@ @g" |
+    tr '`[]()<>*~' '         ')
   set -- "$text"
   partial=$(printf '%s\n' "$1" | grep -Eio "$PARTIAL" | sed -E 's/^[^[:alnum:]]+//' || true)
   if [ -z "$partial" ]; then
