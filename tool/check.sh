@@ -58,18 +58,23 @@ skip_missing() {
 [ -f k.yaml ] || fail "k.yaml is required"
 
 step "bash tests"
-for t in .github/scripts/review_gate_test.sh .github/scripts/github_guard_test.sh tool/check_test.sh; do
+for t in .github/scripts/review_gate_test.sh .github/scripts/github_guard_test.sh .github/scripts/workflow_lint_test.sh tool/check_test.sh; do
   if [ -f "$t" ]; then
     bash "$t" || fail "bash tests failed: $t"
   fi
 done
 
+step "workflow hardening (#6)"
+bash .github/scripts/workflow_lint.sh || fail "workflow hardening check failed"
+
 if [ ! -f pubspec.yaml ]; then
   fail "pubspec.yaml is missing at the repository root"
 fi
 
-step "dart pub get"
-run dart pub get
+# --enforce-lockfile: a pubspec.lock that is missing or out of sync with the
+# pubspecs fails instead of being rewritten (#6).
+step "dart pub get --enforce-lockfile"
+run dart pub get --enforce-lockfile
 
 step "dart format"
 dart format --output=none --set-exit-if-changed . \

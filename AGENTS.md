@@ -66,6 +66,16 @@ tool/install_hooks.sh
 7. **Resolve every review thread.** The ruleset requires all review threads to be resolved: the author resolves each of their threads (after fixing or answering it), otherwise an approved PR with green checks does not merge.
 8. **Nobody merges by hand.** The only exception is the bootstrap: the PRs for #1 and #2 are merged once by hand after the Reviewer's verdict.
 
+## Hardened CI (#6)
+- Every `uses:` is pinned by a full 40-character commit SHA, with the version in a comment (`owner/repo@<sha> # vX.Y.Z`).
+- Every workflow sets `permissions: {}` at the top level, and each job widens only what it needs (default `contents: read`).
+- Every job sets `timeout-minutes`.
+- `.github/scripts/workflow_lint.sh` enforces these three rules. `tool/check.sh` runs it in the required `test` check, and `.github/scripts/workflow_lint_test.sh` tests it.
+- `concurrency` uses `cancel-in-progress: true` for `test` and `k-config`. The gates (`review-gate`, `github-guard`) and `auto-merge` keep `cancel-in-progress: false` on purpose: a newer event must never cancel a run that removes a stale approval label.
+- `pubspec.lock` is committed, and every `dart pub get` in CI runs with `--enforce-lockfile`, so an out-of-sync lockfile fails the job.
+- The pub cache (`~/.pub-cache`) is cached with `actions/cache`, keyed on the hash of every `pubspec.lock`.
+- Each job installs the Dart SDK once, with `dart-lang/setup-dart`. The SDK version is pinned in the workflows, because it is needed before Dart (and therefore `k_config`) can run.
+
 ## Current status (#2)
 - Done: squash merge only, branches deleted after merge, auto-merge enabled.
 - The `main` ruleset is active: PR required, squash only, 0 approvals, resolved threads, strict required checks `test`, `review-gate` and `github-guard`, no force-push, no deletion, no bypass. Direct pushes to `main` are rejected.

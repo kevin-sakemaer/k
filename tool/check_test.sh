@@ -54,6 +54,10 @@ case "$1 ${2:-}" in
       case "$a" in --coverage=*) mkdir -p "${a#--coverage=}" ;; esac
     done
     ;;
+  "pub get")
+    echo "dart $*" >>.fake_runs
+    [ -z "${FAKE_LOCK_FAIL:-}" ] || { echo "pubspec.lock is out of date" >&2; exit 65; }
+    ;;
   "run "*)
     echo "dart $*" >>.fake_runs
     case "$2" in
@@ -86,6 +90,9 @@ new_repo() {
   d="$(mktemp -d "$work/repo.XXXX")"
   mkdir -p "$d/tool" "$d/packages/a/lib" "$d/packages/a/test"
   cp "$check" "$d/tool/check.sh"
+  mkdir -p "$d/.github/scripts" "$d/.github/workflows"
+  cp "$here/../.github/scripts/workflow_lint.sh" "$d/.github/scripts/"
+  cp "$here/../.github/workflows/"*.yml "$d/.github/workflows/"
   printf 'name: ws\nworkspace:\n  - packages/a\n' >"$d/pubspec.yaml"
   printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n' >"$d/k.yaml"
   printf 'coverage.default 100\ncoverage.tool_version 1.16.0\n' >"$d/.fake_kconfig"
@@ -161,6 +168,21 @@ r="$(new_repo)"
 printf 'coverage.tool_version 1.16.0\n' >"$r/.fake_kconfig"
 expect "a value k_config does not print fails" 1 \
   "k_config printed an empty value for coverage.default" "$r"
+
+r="$(new_repo)"
+printf 'permissions: {}\njobs:\n  x:\n    timeout-minutes: 1\n    steps:\n      - uses: a/b@v1\n' \
+  >"$r/.github/workflows/bad.yml"
+expect "an unpinned action fails" 1 "FAIL: workflow hardening check failed" "$r"
+
+r="$(new_repo)"
+expect "pub get enforces the lockfile" 0 "All checks passed." "$r"
+if ! ran "$r" "dart pub get --enforce-lockfile"; then
+  echo "FAIL - pub get enforces the lockfile (not invoked with --enforce-lockfile)"; failed=$((failed + 1))
+fi
+
+r="$(new_repo)"
+FAKE_LOCK_FAIL=1 expect "out-of-sync lockfile fails" 1 \
+  "FAIL: command failed: dart pub get --enforce-lockfile" "$r"
 
 r="$(new_repo)"
 : >"$r/k.yaml"
