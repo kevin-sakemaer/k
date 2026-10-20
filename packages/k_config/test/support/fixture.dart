@@ -20,6 +20,10 @@ dependencies:
       reason: "Needed for the generated bindings."
       approved_by: "Kevin, 2026-10-20, via Grok Bot."
 comments:
+  include:
+    - "**.dart"
+  exclude:
+    - ".dart_tool/**"
   exceptions:
     - path: packages/alpha/lib/legacy.dart
       reason: "Vendored file kept verbatim."

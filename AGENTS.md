@@ -8,7 +8,7 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
 - Public members are documented.
 - `k.yaml` at the repository root is the single source of configuration; nothing is hard-coded.
 - Every rule must live in a required CI check. Checks still to come, each tracked in its own issue and made required on `main` when done:
-  - `///`-only comments: #9 (runs in the `test` check; reading its settings from k.yaml is still to do);
+  - `///`-only comments: #9 (runs in the `test` check, settings in the `comments` section of k.yaml);
   - dependency publishers: #4;
   - no closing keywords in partial PRs (Pre-commit checklist point 7): #26.
 
@@ -38,7 +38,7 @@ tool/install_hooks.sh
 - `k.yaml` is mandatory: without it, `tool/check.sh` fails first with `k.yaml is required`. There is no default value outside `k.yaml`.
 - `tool/check.sh` never parses `k.yaml`: it validates it with `k_config` (required: a missing `packages/k_config/bin/k_config.dart` fails the job), then reads each value through `dart run k_config --get <key>` (`coverage.thresholds`, `coverage.tool_version`). An invalid `k.yaml` fails the check. Coverage is never disabled.
 - Coverage counts every `lib/**/*.dart` file: a file that no test loads counts as 0%.
-- The comments check (#9) runs `dart run k_comments --root . --include '**.dart' --exclude '.dart_tool/**' --exclude '**/.dart_tool/**'` (package `packages/k_comments`, #20) and fails on any violation. `packages/k_comments/bin/k_comments.dart` is on `main`, so a missing checker always fails the job. Its globs and exceptions are still to be read from k.yaml (#9). A workspace package executable `packages/<name>/bin/<name>.dart` is run by package name, any other script by path.
+- The comments check (#9) runs `dart run k_comments` (package `packages/k_comments`, #20). It reads `comments.include`, `comments.exclude` and `comments.exceptions` from k.yaml through `k_config`, and only `.dart` files are ever read. It fails on any `//` (including `////`, `// ignore:` and `// ignore_for_file:`), `/* */` or `/** */` comment, on an unterminated `/*`, on a file that is not valid UTF-8, on a `.dart` symbolic link that is broken, points outside the repository or points to a directory, and on a comment exception that is not needed. Each violation is reported as `path:line:column`, with the column counted in Unicode code points. Text inside string literals is never treated as a comment. `packages/k_comments/bin/k_comments.dart` is on `main`, so a missing checker always fails the job. A workspace package executable `packages/<name>/bin/<name>.dart` is run by package name, any other script by path.
 - Checks whose script is not on `main` yet (publishers #4 at `packages/k_publishers/bin/k_publishers.dart`; #4 may change that location) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
 - Points 6 to 9 stay manual (`review-gate` also enforces point 8).
 
@@ -108,6 +108,10 @@ dependencies:
       reason: "Why this dependency is needed."
       approved_by: "Kevin, YYYY-MM-DD, via Grok Bot."
 comments:
+  include:                  # Required, at least one glob, relative to the root.
+    - "**.dart"
+  exclude:                  # Required, may be [].
+    - ".dart_tool/**"
   exceptions:               # Required, may be [].
     - path: packages/foo/lib/vendored.dart   # Existing file, relative path.
       reason: "Why this file needs non-documentation comments."
@@ -115,9 +119,10 @@ comments:
 
 - `coverage`: `default` applies to every package; an override lowers it for one package and must be strictly lower than `default`. `tool/check.sh` (#5) enforces, per package, the line coverage of `lib/` against its override or `coverage.default`, read through `k_config --get coverage.thresholds`; below the threshold the required `test` check fails. Every measured package gets a threshold, including the workspace root when it has a `lib/`; the root `pubspec.yaml` must therefore have a `name`, or `k_config` fails. The coverage of each package is added to the job summary, even when the package fails, next to the k.yaml summary that lists every active override with its reason. The lcov report of each package is uploaded as the `lcov-<PR>-<sha>` artifact of the `test` job, even when the job fails; a successful run without any report fails. `tool_version` is the exact version of `package:coverage` (tools.dart.dev) that `tool/check.sh` activates to build the lcov report.
 - `dependencies`: the publishers `dart.dev`, `tools.dart.dev` and `labs.dart.dev` are fixed in `k_config` and cannot be changed from `k.yaml` (an `allowed_publishers` key fails as an unknown key). Any other direct dependency needs an entry in `exceptions`.
-- `comments`: files allowed to contain non-documentation comments.
+- `comments`: `include` and `exclude` are the globs of the files checked by the comments check (only `.dart` files are read). `exceptions` lists the files allowed to contain non-documentation comments, each with a reason. An exception that is not needed fails the check.
+- `k_config` is the only reader of `k.yaml`: shell scripts read scalars with `k_config --get <key>`, and Dart code reads lists through the `loadKConfig` library function.
 
-Validation fails on an unknown or missing key at any level, a duplicated key, a wrong type, a threshold that is not a plain decimal integer from 0 to 100 (no decimal, exponent, hexadecimal, octal, sign, separator, leading zero, string or boolean), a `tool_version` that is not an exact `MAJOR.MINOR.PATCH` string, a coverage override not strictly lower than `coverage.default` or for a package outside the workspace, a missing or blank `reason` (or `approved_by`), a dependency exception for a package that is not a direct dependency, and a comment exception for a missing or duplicated file.
+Validation fails on an unknown or missing key at any level, a duplicated key, a wrong type, a threshold that is not a plain decimal integer from 0 to 100 (no decimal, exponent, hexadecimal, octal, sign, separator, leading zero, string or boolean), a `tool_version` that is not an exact `MAJOR.MINOR.PATCH` string, a coverage override not strictly lower than `coverage.default` or for a package outside the workspace, a missing or blank `reason` (or `approved_by`), a dependency exception for a package that is not a direct dependency, a comment exception for a missing or duplicated file, and a comment `include` list that is empty, or an `include` or `exclude` entry that is blank, not a string or duplicated.
 
 ### Adding an exception
 1. Get Kevin's approval first: **every exception requires Kevin's agreement** (through Grok Bot).

@@ -53,6 +53,8 @@ void main() {
         config.dependencies.exceptions['third_party']?.approvedBy,
         startsWith('Kevin'),
       );
+      expect(config.comments.include, ['**.dart']);
+      expect(config.comments.exclude, ['.dart_tool/**']);
       expect(config.comments.exceptions.single.path, endsWith('legacy.dart'));
       expect(config.comments.exceptions.single.reason, isNotEmpty);
     });
@@ -61,7 +63,7 @@ void main() {
       const source = '''
 coverage: {default: 100, overrides: {}, tool_version: 1.16.0}
 dependencies: {exceptions: {}}
-comments: {exceptions: []}
+comments: {include: ["**.dart"], exclude: [], exceptions: []}
 ''';
 
       expect(parse(source), isA<KConfigValid>());
@@ -70,7 +72,7 @@ comments: {exceptions: []}
     test('accepts the bounds 0 and 100', () {
       const empty =
           'dependencies: {exceptions: {}}\n'
-          'comments: {exceptions: []}\n';
+          'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n';
       for (final bound in [0, 100]) {
         final source =
             'coverage: {default: $bound, tool_version: 1.16.0, overrides: {}}\n'
@@ -108,7 +110,8 @@ comments: {exceptions: []}
     final failures = <String, (String, List<String>)>{
       'invalid YAML': ('coverage: [unclosed', ['k.yaml: invalid YAML:']),
       'a duplicated section': (
-        '$validConfig\ncomments:\n  exceptions: []\n',
+        '$validConfig\ncomments:\n'
+            '  include: ["**.dart"]\n  exclude: []\n  exceptions: []\n',
         ['k.yaml: invalid YAML:'],
       ),
       'a document that is not a mapping': (
@@ -151,7 +154,8 @@ comments: {exceptions: []}
         ],
       ),
       'a section that is not a mapping': (
-        edit('comments:\n  exceptions:', 'comments: []\nunused:'),
+        '${validConfig.substring(0, validConfig.indexOf('comments:'))}'
+            'comments: []\nunused: {}\n',
         [
           'k.yaml: comments: must be a mapping.',
           message(
@@ -203,7 +207,7 @@ comments: {exceptions: []}
       'a missing overrides key': (
         'coverage: {default: 100, tool_version: 1.16.0}\n'
             'dependencies: {exceptions: {}}\n'
-            'comments: {exceptions: []}\n',
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n',
         ['k.yaml: coverage.overrides: missing required key.'],
       ),
       'a quoted threshold': (
@@ -479,19 +483,19 @@ comments: {exceptions: []}
       'dependency exceptions that are not a mapping': (
         'coverage: {default: 100, overrides: {}, tool_version: 1.16.0}\n'
             'dependencies: {exceptions: []}\n'
-            'comments: {exceptions: []}\n',
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n',
         ['k.yaml: dependencies.exceptions: must be a mapping.'],
       ),
       'a dependencies section that is not a mapping': (
         'coverage: {default: 100, overrides: {}, tool_version: 1.16.0}\n'
             'dependencies: []\n'
-            'comments: {exceptions: []}\n',
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n',
         ['k.yaml: dependencies: must be a mapping.'],
       ),
       'a coverage section that is not a mapping': (
         'coverage: 100\n'
             'dependencies: {exceptions: {}}\n'
-            'comments: {exceptions: []}\n',
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n',
         ['k.yaml: coverage: must be a mapping.'],
       ),
       'comment exceptions that are not a list': (
@@ -548,6 +552,51 @@ comments: {exceptions: []}
           '    - packages/alpha/lib/legacy.dart',
         ),
         ['k.yaml: comments.exceptions[0]: must be a mapping.'],
+      ),
+      'comment include globs that are not a list': (
+        edit('  include:\n    - "**.dart"', '  include: "**.dart"'),
+        ['k.yaml: comments.include: must be a list.'],
+      ),
+      'empty comment include globs': (
+        edit('  include:\n    - "**.dart"', '  include: []'),
+        ['k.yaml: comments.include: must list at least one glob pattern.'],
+      ),
+      'missing comment include globs': (
+        edit('  include:\n    - "**.dart"\n', ''),
+        ['k.yaml: comments.include: missing required key.'],
+      ),
+      'a blank comment exclude glob': (
+        edit('    - ".dart_tool/**"', '    - " "'),
+        [
+          message(
+            'k.yaml: comments.exclude[0]: '
+            'must be a non-empty glob pattern string.',
+          ),
+        ],
+      ),
+      'a comment exclude glob that is not a string': (
+        edit('    - ".dart_tool/**"', '    - 3'),
+        [
+          message(
+            'k.yaml: comments.exclude[0]: '
+            'must be a non-empty glob pattern string.',
+          ),
+        ],
+      ),
+      'an invalid comment include glob': (
+        edit('    - "**.dart"', '    - "[unclosed"'),
+        ['k.yaml: comments.include[0]: invalid glob pattern "[unclosed": '],
+      ),
+      'an invalid comment exclude glob': (
+        edit('    - ".dart_tool/**"', '    - "{a,b"'),
+        ['k.yaml: comments.exclude[0]: invalid glob pattern "{a,b": '],
+      ),
+      'a duplicated comment exclude glob': (
+        edit(
+          '    - ".dart_tool/**"',
+          '    - ".dart_tool/**"\n    - ".dart_tool/**"',
+        ),
+        ['k.yaml: comments.exclude[1]: duplicated pattern ".dart_tool/**".'],
       ),
       'a duplicated comment exception': (
         '$validConfig'

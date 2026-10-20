@@ -7,6 +7,16 @@ List<CommentKind> kinds(String source) =>
     findViolations(source, 'a.dart').map((v) => v.kind).toList();
 
 void main() {
+  test('only comment kinds can be suppressed by an exception', () {
+    expect(CommentKind.values.where((kind) => kind.isComment), <CommentKind>[
+      CommentKind.line,
+      CommentKind.ignore,
+      CommentKind.block,
+      CommentKind.docBlock,
+      CommentKind.unterminatedBlock,
+    ]);
+  });
+
   group('findViolations', () {
     test('allows /// documentation comments', () {
       expect(kinds('/// Doc.\nvoid f() {}\n'), isEmpty);
@@ -159,6 +169,7 @@ void main() {
         CommentScanConfig(
           include: <String>['**.dart'],
           exclude: <String>['gen/**'],
+          exceptions: <String>[],
         ),
       );
       expect(found.map((v) => v.toString()), <String>[
@@ -170,7 +181,11 @@ void main() {
       File('${root.path}/a.yaml').writeAsStringSync('url: https://pub.dev\n');
       final List<CommentViolation> found = scanFiles(
         root,
-        CommentScanConfig(include: <String>['**'], exclude: <String>['gen/**']),
+        CommentScanConfig(
+          include: <String>['**'],
+          exclude: <String>['gen/**'],
+          exceptions: <String>[],
+        ),
       );
       expect(found.map((v) => v.path), <String>['lib/a.dart']);
     });
@@ -180,7 +195,11 @@ void main() {
           .writeAsBytesSync(<int>[0xff, 0xfe, 0x00]);
       final List<CommentViolation> found = scanFiles(
         root,
-        CommentScanConfig(include: <String>['lib/**'], exclude: <String>[]),
+        CommentScanConfig(
+          include: <String>['lib/**'],
+          exclude: <String>[],
+          exceptions: <String>[],
+        ),
       );
       expect(found.map((v) => v.toString()), <String>[
         'lib/a.dart:1:1: line comment is not allowed, use /// only',
@@ -192,7 +211,11 @@ void main() {
       Link('${root.path}/lib/link.dart').createSync('${root.path}/gen/c.dart');
       final List<CommentViolation> found = scanFiles(
         root,
-        CommentScanConfig(include: <String>['lib/**'], exclude: <String>[]),
+        CommentScanConfig(
+          include: <String>['lib/**'],
+          exclude: <String>[],
+          exceptions: <String>[],
+        ),
       );
       expect(found.map((v) => v.toString()), <String>[
         'lib/a.dart:1:1: line comment is not allowed, use /// only',
@@ -208,7 +231,11 @@ void main() {
       Link('${root.path}/lib/broken.dart').createSync('${root.path}/none.dart');
       final List<CommentViolation> found = scanFiles(
         root,
-        CommentScanConfig(include: <String>['lib/**'], exclude: <String>[]),
+        CommentScanConfig(
+          include: <String>['lib/**'],
+          exclude: <String>[],
+          exceptions: <String>[],
+        ),
       );
       const message =
           'symbolic link target is missing or outside the scan root';
@@ -219,10 +246,84 @@ void main() {
       ]);
     });
 
+    test('reports a .dart symbolic link to a directory', () {
+      Directory('${root.path}/dir').createSync();
+      Link('${root.path}/lib/dir.dart').createSync('${root.path}/dir');
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(
+          include: <String>['lib/**'],
+          exclude: <String>[],
+          exceptions: <String>['lib/a.dart'],
+        ),
+      );
+      expect(found.map((v) => v.toString()), <String>[
+        'lib/dir.dart:1:1: symbolic link points to a directory, not a Dart file',
+      ]);
+    });
+
+    test('skips the violations of an excepted file', () {
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(
+          include: <String>['**.dart'],
+          exclude: <String>[],
+          exceptions: <String>['gen/c.dart'],
+        ),
+      );
+      expect(found.map((v) => v.path), <String>['lib/a.dart']);
+    });
+
+    test('exceptions never hide file problems', () {
+      File('${root.path}/lib/bad.dart').writeAsBytesSync(<int>[0xff, 0xfe]);
+      Directory('${root.path}/dir').createSync();
+      Link('${root.path}/lib/dir.dart').createSync('${root.path}/dir');
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(
+          include: <String>['lib/**'],
+          exclude: <String>[],
+          exceptions: <String>['lib/a.dart', 'lib/bad.dart', 'lib/dir.dart'],
+        ),
+      );
+      const unused =
+          'comment exception is not needed: the file is not checked or only '
+          'has /// comments; remove it from k.yaml';
+      expect(found.map((v) => v.toString()), <String>[
+        'lib/bad.dart:1:1: cannot read file as UTF-8',
+        'lib/dir.dart:1:1: symbolic link points to a directory, not a Dart file',
+        'lib/bad.dart:1:1: $unused',
+        'lib/dir.dart:1:1: $unused',
+      ]);
+    });
+
+    test('reports exceptions that are not needed', () {
+      File('${root.path}/notes.dart').writeAsStringSync('/// ok\n');
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(
+          include: <String>['lib/**'],
+          exclude: <String>[],
+          exceptions: <String>['lib/a.dart', 'lib/b.dart', 'gen/c.dart'],
+        ),
+      );
+      const unused =
+          'comment exception is not needed: the file is not checked or only '
+          'has /// comments; remove it from k.yaml';
+      expect(found.map((v) => v.toString()), <String>[
+        'gen/c.dart:1:1: $unused',
+        'lib/b.dart:1:1: $unused',
+      ]);
+    });
+
     test('reports files in path order', () {
       final List<CommentViolation> found = scanFiles(
         root,
-        CommentScanConfig(include: <String>['**.dart'], exclude: <String>[]),
+        CommentScanConfig(
+          include: <String>['**.dart'],
+          exclude: <String>[],
+          exceptions: <String>[],
+        ),
       );
       expect(found.map((v) => v.path), <String>['gen/c.dart', 'lib/a.dart']);
     });

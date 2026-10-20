@@ -332,7 +332,7 @@ FAKE_GH_FAIL=1 CI_MODE=true expect "unknown issue state fails in CI" 1 \
 # Repository script locations and invocation.
 r="$(new_repo)"
 expect "comments package runs by name" 0 "All checks passed." "$r"
-if ! ran "$r" "dart run k_comments --root . --include **.dart --exclude .dart_tool/** --exclude **/.dart_tool/**"; then
+if ! ran "$r" "dart run k_comments"; then
   echo "FAIL - comments package runs by name (not invoked as expected)"; failed=$((failed + 1))
 fi
 
@@ -403,7 +403,7 @@ if [ -n "$real_dart" ] && [ -f "$here/../packages/k_config/bin/k_config.dart" ];
   kget_real() {
     (cd "$here/.." && "$real_dart" run packages/k_config/bin/k_config.dart --get "$1" "$kroot" 2>&1)
   }
-  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\ndependencies: {exceptions: {}}\ncomments: {include: ["**.dart"], exclude: [], exceptions: []}\n' >"$kroot/k.yaml"
   if got="$(kget_real coverage.tool_version)" && [ "$got" = "1.16.0" ]; then
     echo "ok   - flow style k.yaml is read by k_config"
     pass=$((pass + 1))
@@ -411,7 +411,7 @@ if [ -n "$real_dart" ] && [ -f "$here/../packages/k_config/bin/k_config.dart" ];
     echo "FAIL - flow style k.yaml is read by k_config: $got"
     failed=$((failed + 1))
   fi
-  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\ndependencies: {exceptions: {}}\ncomments: {include: ["**.dart"], exclude: [], exceptions: []}\n' >"$kroot/k.yaml"
   if got="$(kget_real coverage.thresholds)" && [ "$got" = "$(printf 'a\t100\nws\t100')" ]; then
     echo "ok   - k_config gives the workspace root a threshold"
     pass=$((pass + 1))
@@ -421,7 +421,7 @@ if [ -n "$real_dart" ] && [ -f "$here/../packages/k_config/bin/k_config.dart" ];
   fi
   # The Guardian's coverage.default cases, now enforced by k_config.
   for bad in '"100"' "'100'" abc 101 100.0 -1 '' 1e2 0x64 +100; do
-    printf 'coverage:\n  default: %s\n  tool_version: 1.16.0\n  overrides: {}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' "$bad" >"$kroot/k.yaml"
+    printf 'coverage:\n  default: %s\n  tool_version: 1.16.0\n  overrides: {}\ndependencies: {exceptions: {}}\ncomments: {include: ["**.dart"], exclude: [], exceptions: []}\n' "$bad" >"$kroot/k.yaml"
     if got="$(kget_real coverage.default)"; then
       echo "FAIL - coverage.default $bad is rejected: $got"
       failed=$((failed + 1))
@@ -433,7 +433,7 @@ if [ -n "$real_dart" ] && [ -f "$here/../packages/k_config/bin/k_config.dart" ];
       failed=$((failed + 1))
     fi
   done
-  printf 'coverage:\n  default: 50 # comment\n  tool_version: 1.16.0\n  overrides: {}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  printf 'coverage:\n  default: 50 # comment\n  tool_version: 1.16.0\n  overrides: {}\ndependencies: {exceptions: {}}\ncomments: {include: ["**.dart"], exclude: [], exceptions: []}\n' >"$kroot/k.yaml"
   if got="$(kget_real coverage.default)" && [ "$got" = 50 ]; then
     echo "ok   - integer coverage.default with a comment is used"
     pass=$((pass + 1))
@@ -441,7 +441,7 @@ if [ -n "$real_dart" ] && [ -f "$here/../packages/k_config/bin/k_config.dart" ];
     echo "FAIL - integer coverage.default with a comment is used: $got"
     failed=$((failed + 1))
   fi
-  printf 'coverage:\n  default: 100\n  tool_version: "1.16.0\n  overrides: {}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  printf 'coverage:\n  default: 100\n  tool_version: "1.16.0\n  overrides: {}\ndependencies: {exceptions: {}}\ncomments: {include: ["**.dart"], exclude: [], exceptions: []}\n' >"$kroot/k.yaml"
   if got="$(kget_real coverage.tool_version)"; then
     echo "FAIL - unbalanced quote in k.yaml is rejected: $got"
     failed=$((failed + 1))

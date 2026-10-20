@@ -146,11 +146,9 @@ coverage_version="$(kget coverage.tool_version)" || exit 1
 check_script "dependency publishers check" 4 "packages/k_publishers/bin/k_publishers.dart"
 
 # ///-only comments check (#9, package from #20), on main: always required.
-# It scans every .dart file except the generated .dart_tool directories.
-# TODO(#9): read the scan globs and comments.exceptions from k.yaml through
-# k_config: k.yaml already has a comments section.
-check_script "comments check" required "packages/k_comments/bin/k_comments.dart" \
-  --root . --include '**.dart' --exclude '.dart_tool/**' --exclude '**/.dart_tool/**'
+# k_comments reads its globs and exceptions from the comments section of
+# k.yaml through k_config, so no value is passed here.
+check_script "comments check" required "packages/k_comments/bin/k_comments.dart"
 
 # Hardened CI rules for every workflow (#6): a YAML parse of
 # .github/workflows checks pinned uses:, timeouts and permissions.
