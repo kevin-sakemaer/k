@@ -274,11 +274,28 @@ printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\n' >"$MOCK/pulls.out"
 run_gate
 check 1 "review:approved removed after a new push" deleted
 
-new_case "ready_for_review with fresh approval passes" ready_for_review review:approved
+new_case "ready_for_review, not draft, fresh approval passes" ready_for_review review:approved
 echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
 echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
 run_gate
 check 0 "Review approved." kept
+
+new_case "ready_for_review, not draft, approval older than head push fails" ready_for_review review:approved
+echo "labeled review:approved 2026-10-20T09:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T10:00:00Z" >"$MOCK/activity.out"
+run_gate
+check 1 "review:approved predates the latest push; a new review is required" deleted
+
+# Stale payload: the event says converted_to_draft but the API reads draft
+# false; the gate must follow the API.
+new_case "converted_to_draft with API draft false follows the API" converted_to_draft review:approved
+printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\n' >"$MOCK/pulls.out"
+echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
+run_gate
+check 0 "Draft: false" kept
+case "$OUT" in *"PR is a draft"*) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (treated as draft)" ;; esac
+case "$OUT" in *"Review approved."*) ;; *) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (not approved)" ;; esac
 
 new_case "unknown draft state fails closed" labeled review:approved
 printf 'AAAA\tkevin-sakemaer/k\tfeature\tnull\n' >"$MOCK/pulls.out"
