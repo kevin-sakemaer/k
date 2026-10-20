@@ -116,7 +116,7 @@ check 1 "the Reviewer must add the label" kept
 new_case "script change without label fails" labeled ".github/scripts/review_gate.sh"
 check 1 ".github/scripts/review_gate.sh"
 
-for p in tool/check.sh tool/check_test.sh tool/hooks/pre-push analysis_options.yaml k.yaml; do
+for p in tool/check.sh tool/check_test.sh tool/hooks/pre-push packages/k_comments/lib/src/scanner.dart packages/k_comments/pubspec.yaml analysis_options.yaml k.yaml; do
   new_case "$p is protected" opened "$p"
   check 1 "  $p"
 done
@@ -133,7 +133,7 @@ check 0 "Approved by label" kept
 new_case "similar analysis files are not protected" opened "analysis_options.yaml.bak docs/analysis_options.md packages/a/my_analysis_options.yaml packages/a/k.yaml.bak"
 check 0 "No protected path changed."
 
-new_case "other tool files are not protected" opened "tool/install_hooks.sh"
+new_case "other tool files are not protected" opened "tool/install_hooks.sh packages/k_core/lib/k_core.dart packages/k_comments_extra/x.dart"
 check 0 "No protected path changed."
 
 new_case "fresh label passes" labeled ".github/CODEOWNERS" "$L"
