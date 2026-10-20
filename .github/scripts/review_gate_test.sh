@@ -61,7 +61,7 @@ new_case() {
   shift 2
   export MOCK="$WORK/$CASE"
   mkdir -p "$MOCK"
-  printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\n' >"$MOCK/pulls.out"
+  printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\tmain\n' >"$MOCK/pulls.out"
   printf '%s\n' "$@" >"$MOCK/labels.out"
   : >"$MOCK/timeline.out"
   : >"$MOCK/activity.out"
@@ -251,26 +251,26 @@ SCRIPT="$SAVED_SCRIPT"
 check 1 "freshness.sh" kept
 
 new_case "draft with fresh approval fails" labeled review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\n' >"$MOCK/pulls.out"
+printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' >"$MOCK/pulls.out"
 echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
 echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
 run_gate
 check 1 "PR is a draft" kept
 
 new_case "converted_to_draft fails" converted_to_draft review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\n' >"$MOCK/pulls.out"
+printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' >"$MOCK/pulls.out"
 echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
 echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
 run_gate
 check 1 "PR is a draft" kept
 
 new_case "draft without approval fails as draft" opened ci
-printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\n' >"$MOCK/pulls.out"
+printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' >"$MOCK/pulls.out"
 run_gate
 check 1 "PR is a draft" kept
 
 new_case "push on draft still removes approval" synchronize review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\n' >"$MOCK/pulls.out"
+printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' >"$MOCK/pulls.out"
 run_gate
 check 1 "review:approved removed after a new push" deleted
 
@@ -289,7 +289,7 @@ check 1 "review:approved predates the latest push; a new review is required" del
 # Stale payload: the event says converted_to_draft but the API reads draft
 # false; the gate must follow the API.
 new_case "converted_to_draft with API draft false follows the API" converted_to_draft review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\n' >"$MOCK/pulls.out"
+printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\tmain\n' >"$MOCK/pulls.out"
 echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
 echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
 run_gate
@@ -298,9 +298,25 @@ case "$OUT" in *"PR is a draft"*) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (tr
 case "$OUT" in *"Review approved."*) ;; *) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (not approved)" ;; esac
 
 new_case "unknown draft state fails closed" labeled review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\tnull\n' >"$MOCK/pulls.out"
+printf 'AAAA\tkevin-sakemaer/k\tfeature\tnull\tmain\n' >"$MOCK/pulls.out"
 run_gate
 check 1 "Could not read the PR draft state." kept
+
+new_case "base main passes" labeled review:approved
+echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
+run_gate
+check 0 "Base: main" kept
+
+new_case "stacked PR fails even when approved" labeled review:approved
+printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\tfeat/k-config-10\n' >"$MOCK/pulls.out"
+run_gate
+check 1 "PR base is 'feat/k-config-10', not main: stacked PRs are forbidden" kept
+
+new_case "missing base fails closed" labeled review:approved
+printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\n' >"$MOCK/pulls.out"
+run_gate
+check 1 "PR base is 'unknown', not main" kept
 
 echo "$PASS passed, $FAILED failed"
 [ "$FAILED" = 0 ]

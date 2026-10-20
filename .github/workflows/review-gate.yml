@@ -3,9 +3,11 @@ name: review-gate
 # pull_request_target runs this workflow and its script as defined on the base
 # branch, so a PR cannot change the gate that checks it (#15). Never check out
 # or run code from the PR head here.
+# No branches filter: the gate must run on PRs to any base, so that it fails
+# stacked PRs (#33). `edited` re-runs it when the base is changed.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review, converted_to_draft]
+    types: [opened, synchronize, reopened, labeled, unlabeled, ready_for_review, converted_to_draft, edited]
 
 permissions: {}
 
