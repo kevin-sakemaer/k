@@ -6,15 +6,20 @@ on:
 
 permissions: {}
 
-# Never cancel: a cancelled synchronize run could leave review:approved in place.
+# Each synchronize run gets its own group (github.run_id), so no later event can
+# cancel or replace it while it is pending: the push always removes review:approved.
+# Label runs share one group per PR. A pending run in a group can still be replaced
+# by a newer one, so the freshness check below does not rely on this setting.
 concurrency:
-  group: review-gate-${{ github.event.pull_request.number }}
+  group: review-gate-${{ github.event.pull_request.number }}-${{ github.event.action == 'synchronize' && github.run_id || 'label' }}
   cancel-in-progress: false
 
 jobs:
   review-gate:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
+      contents: read
       pull-requests: write
     steps:
       - name: Check review labels
@@ -24,11 +29,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           ACTION: ${{ github.event.action }}
         run: |
-          # Read current labels from the API; the event payload may be stale.
-          labels=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name')
-          echo "Labels: $labels"
-
-          if [ "$ACTION" = "synchronize" ] && echo "$labels" | grep -qx 'review:approved'; then
+          remove_approved() {
             # A 404 means the label is already gone: not an error.
             if ! out=$(gh api -X DELETE "repos/$REPO/issues/$PR/labels/review%3Aapproved" 2>&1); then
               if echo "$out" | grep -q 'HTTP 403'; then
@@ -41,6 +42,19 @@ jobs:
                 exit 1
               fi
             fi
+          }
+
+          # Read current state from the API; the event payload may be stale.
+          pr_json=$(gh api "repos/$REPO/pulls/$PR")
+          head_sha=$(echo "$pr_json" | jq -r '.head.sha')
+          head_repo=$(echo "$pr_json" | jq -r '.head.repo.full_name')
+          head_ref=$(echo "$pr_json" | jq -r '.head.ref')
+          labels=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name')
+          echo "Head: $head_sha ($head_repo:$head_ref)"
+          echo "Labels: $labels"
+
+          if [ "$ACTION" = "synchronize" ] && echo "$labels" | grep -qx 'review:approved'; then
+            remove_approved
             echo "::error::review:approved removed after a new push; a new review is required"
             exit 1
           fi
@@ -51,6 +65,38 @@ jobs:
           fi
           if ! echo "$labels" | grep -qx 'review:approved'; then
             echo "::error::Waiting for review: label review:approved is missing"
+            exit 1
+          fi
+
+          # Freshness: the latest "labeled review:approved" event must be newer than
+          # the time the current head reached the branch. All timestamps are
+          # server-side; commit dates are never used because they can be forged.
+          approved_at=$(gh api --paginate "repos/$REPO/issues/$PR/timeline?per_page=100" \
+            --jq '.[] | select(.event == "labeled" and .label.name == "review:approved") | .created_at' \
+            | sort | tail -n 1)
+
+          # 1. Repository activity API: server-side time of the push or force-push
+          #    that moved the head branch to the current SHA.
+          head_at=$(gh api "repos/$head_repo/activity?ref=refs/heads/$head_ref&per_page=100" \
+            --jq ".[] | select(.after == \"$head_sha\") | .timestamp" 2>/dev/null | sort | tail -n 1 || true)
+          source="activity API"
+          # 2. Fallback (e.g. fork not readable): the latest head_ref_force_pushed
+          #    timeline event, and the creation time of the first workflow run for
+          #    the head SHA; take the latest of the two.
+          if [ -z "$head_at" ]; then
+            forced_at=$(gh api --paginate "repos/$REPO/issues/$PR/timeline?per_page=100" \
+              --jq '.[] | select(.event == "head_ref_force_pushed") | .created_at' | sort | tail -n 1)
+            run_at=$(gh api --paginate "repos/$REPO/actions/runs?head_sha=$head_sha&event=pull_request&per_page=100" \
+              --jq '.workflow_runs[].created_at' | sort | head -n 1)
+            head_at=$(printf '%s\n%s\n' "$forced_at" "$run_at" | sort | tail -n 1)
+            source="force-push timeline event / first workflow run"
+          fi
+          echo "review:approved added at: ${approved_at:-none}"
+          echo "Head pushed at: ${head_at:-unknown} (source: $source)"
+
+          if [ -z "$approved_at" ] || [ -z "$head_at" ] || [[ ! "$approved_at" > "$head_at" ]]; then
+            remove_approved
+            echo "::error::review:approved predates the latest push; a new review is required"
             exit 1
           fi
           echo "Review approved."
