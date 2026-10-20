@@ -4,7 +4,7 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
 
 ## Repository rules
 - Everything on GitHub (issues, PRs, labels, comments, commit messages, docs, code comments) is in English.
-- Dart code uses only `///` doc comments; `//`, `/* */`, `/** */` and `// ignore:` are forbidden.
+- Dart code uses only `///` doc comments; `//`, `/* */`, `/** */` and `// ignore:` are forbidden. This rule applies to Dart only: `#` comments in shell and YAML are allowed.
 - Public members are documented.
 - `k.yaml` at the repository root is the single source of configuration; nothing is hard-coded.
 - Every rule must live in a required CI check. Checks still to come, each tracked in its own issue and made required on `main` when done:
@@ -21,6 +21,8 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
 4. **Reviewer verdict**: a comment on the PR **and** a label, `review:approved` or `review:changes-requested`. Before re-approving, the Reviewer removes `review:changes-requested`.
 5. **Every push** to the PR automatically removes `review:approved`, and `review-gate` turns red on the new commit. Removing a label with the workflow token does not trigger a new run, so the check **stays red until the Reviewer adds `review:approved` again**.
    - Every `review-gate` run also checks freshness: the latest `labeled review:approved` event in the PR timeline must be newer than the push that brought the current head SHA. The push time comes from the server-side repository activity API; if it is unavailable, from the latest `head_ref_force_pushed` event and the first workflow run for the head SHA. Commit dates are never used. A stale approval is removed and the job fails.
+   - The check fails closed: if the GitHub API is slow to record the push, or fails, the check stays red. Adding the label again (`review:approved`) or re-running the job unblocks it.
+   - The logic lives in `.github/scripts/review_gate.sh`, tested by `.github/scripts/review_gate_test.sh` (plain bash, fake `gh`) in the `test` job.
    - `synchronize` runs each get their own concurrency group, so a label event can never cancel them.
    - On fork PRs the token is read-only: the label cannot be removed automatically and the job fails with a clear message; the Reviewer removes the label by hand.
 6. **Auto-merge** (not active yet, see below): the dev runs `gh pr merge --auto --squash`. The PR merges by itself when the Reviewer adds `review:approved` and every required check is green.
