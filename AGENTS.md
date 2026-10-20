@@ -69,6 +69,20 @@ tool/install_hooks.sh
 7. **Resolve every review thread.** The ruleset requires all review threads to be resolved: the author resolves each of their threads (after fixing or answering it), otherwise an approved PR with green checks does not merge.
 8. **Nobody merges by hand.** The only exception is the bootstrap: the PRs for #1 and #2 are merged once by hand after the Reviewer's verdict.
 
+## Hardened CI (#6)
+- Every `uses:` of a job or a step has one of three forms:
+  - `owner/repo[/path]@<40-character commit SHA>` with exactly one `@`, followed on its line by the version in a comment (`# vX.Y.Z`); quoting the value is fine;
+  - a local action (`./...`);
+  - a Docker image pinned by digest (`docker://image@sha256:<64 hex>`).
+- Every workflow sets exactly `permissions: {}` at the top level.
+- Job `permissions`, when set, is a mapping of explicit GitHub scopes (`contents`, `pull-requests`, ...) to `read`, `write` or `none`. A shorthand such as `write-all` or `read-all` and an unknown scope are rejected. Each job grants only the scopes it uses.
+- Every job that runs steps sets a positive integer `timeout-minutes`. A job that calls a reusable workflow cannot set one.
+- `packages/k_workflows` enforces these rules on `.github/workflows/*.yml|yaml` with a real YAML parse (`package:yaml`), so flow mappings, quoted keys and comments cannot hide a reference, a duplicated key is invalid YAML, and YAML merge keys (`<<`) are rejected anywhere. `tool/check.sh` runs it in the required `test` check.
+- `concurrency` uses `cancel-in-progress: true` for `test` and `k-config`. The gates (`review-gate`, `github-guard`) and `auto-merge` keep `cancel-in-progress: false` on purpose: a newer event must never cancel a run that removes a stale approval label.
+- `pubspec.lock` is committed, and every `dart pub get` in CI runs with `--enforce-lockfile`, so an out-of-sync lockfile fails the job.
+- The pub cache (`~/.pub-cache`) is cached with `actions/cache`, keyed on the hash of every `pubspec.lock`.
+- Each job installs the Dart SDK once, with `dart-lang/setup-dart`. The SDK version is pinned in the workflows, because it is needed before Dart (and therefore `k_config`) can run.
+
 ## Current status (#2)
 - Done: squash merge only, branches deleted after merge, auto-merge enabled.
 - The `main` ruleset is active: PR required, squash only, 0 approvals, resolved threads, strict required checks `test`, `review-gate` and `github-guard`, no force-push, no deletion, no bypass. Direct pushes to `main` are rejected.

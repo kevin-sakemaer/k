@@ -59,17 +59,18 @@ skip_missing() {
 
 step "bash tests"
 for t in .github/scripts/review_gate_test.sh .github/scripts/auto_merge_test.sh .github/scripts/github_guard_test.sh tool/check_test.sh; do
-  if [ -f "$t" ]; then
-    bash "$t" || fail "bash tests failed: $t"
-  fi
+  [ -f "$t" ] || fail "bash test not found: $t"
+  bash "$t" || fail "bash tests failed: $t"
 done
 
 if [ ! -f pubspec.yaml ]; then
   fail "pubspec.yaml is missing at the repository root"
 fi
 
-step "dart pub get"
-run dart pub get
+# --enforce-lockfile: a pubspec.lock that is missing or out of sync with the
+# pubspecs fails instead of being rewritten (#6).
+step "dart pub get --enforce-lockfile"
+run dart pub get --enforce-lockfile
 
 step "dart format"
 dart format --output=none --set-exit-if-changed . \
@@ -148,6 +149,10 @@ check_script "dependency publishers check" 4 "packages/k_publishers/bin/k_publis
 # k_comments reads its globs and exceptions from the comments section of
 # k.yaml through k_config, so no value is passed here.
 check_script "comments check" required "packages/k_comments/bin/k_comments.dart"
+
+# Hardened CI rules for every workflow (#6): a YAML parse of
+# .github/workflows checks pinned uses:, timeouts and permissions.
+check_script "workflow hardening (#6)" required "packages/k_workflows/bin/k_workflows.dart"
 
 step "workspace packages"
 ws_json="$(dart pub workspace list --json)" \

@@ -56,10 +56,15 @@ case "$1 ${2:-}" in
       case "$a" in --coverage=*) mkdir -p "${a#--coverage=}" ;; esac
     done
     ;;
+  "pub get")
+    echo "dart $*" >>.fake_runs
+    [ -z "${FAKE_LOCK_FAIL:-}" ] || { echo "pubspec.lock is out of date" >&2; exit 65; }
+    ;;
   "run "*)
     echo "dart $*" >>.fake_runs
     case "$2" in
       k_comments) [ -z "${FAKE_COMMENTS_FAIL:-}" ] || { echo "x.dart:1:1: line comment is not allowed"; exit 1; } ;;
+      k_workflows) [ -z "${FAKE_WORKFLOWS_FAIL:-}" ] || { echo "w.yml: uses not pinned"; exit 1; } ;;
     esac
     ;;
   *) ;;
@@ -88,6 +93,11 @@ new_repo() {
   d="$(mktemp -d "$work/repo.XXXX")"
   mkdir -p "$d/tool" "$d/packages/a/lib" "$d/packages/a/test"
   cp "$check" "$d/tool/check.sh"
+  mkdir -p "$d/.github/scripts"
+  for t in .github/scripts/review_gate_test.sh .github/scripts/auto_merge_test.sh \
+    .github/scripts/github_guard_test.sh tool/check_test.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' >"$d/$t"
+  done
   printf 'name: ws\nworkspace:\n  - packages/a\n' >"$d/pubspec.yaml"
   printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n' >"$d/k.yaml"
   printf 'coverage.default 100\ncoverage.tool_version 1.16.0\n' >"$d/.fake_kconfig"
@@ -98,6 +108,7 @@ new_repo() {
   printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:2\nend_of_record\n' >"$d/packages/a/fake.lcov"
   add_pkg_script "$d" k_comments
   add_pkg_script "$d" k_config
+  add_pkg_script "$d" k_workflows
   echo "$d"
 }
 
@@ -225,6 +236,33 @@ r="$(new_repo)"
 printf 'coverage.default 100\n' >"$r/.fake_kconfig"
 expect "a value k_config does not print fails" 1 \
   "k_config printed an empty value for coverage.tool_version" "$r"
+
+r="$(new_repo)"
+FAKE_WORKFLOWS_FAIL=1 expect "a workflow lint failure fails" 1 \
+  "FAIL: workflow hardening (#6) failed" "$r"
+if ! ran "$r" "dart run k_workflows"; then
+  echo "FAIL - workflow lint runs by package name"; failed=$((failed + 1))
+fi
+
+r="$(new_repo)"
+rm -r "$r/packages/k_workflows"
+expect "a missing workflow lint fails" 1 \
+  "packages/k_workflows/bin/k_workflows.dart not found: the workflow hardening (#6) is required" "$r"
+
+r="$(new_repo)"
+rm "$r/.github/scripts/auto_merge_test.sh"
+expect "a missing bash test file fails" 1 \
+  "bash test not found: .github/scripts/auto_merge_test.sh" "$r"
+
+r="$(new_repo)"
+expect "pub get enforces the lockfile" 0 "All checks passed." "$r"
+if ! ran "$r" "dart pub get --enforce-lockfile"; then
+  echo "FAIL - pub get enforces the lockfile (not invoked with --enforce-lockfile)"; failed=$((failed + 1))
+fi
+
+r="$(new_repo)"
+FAKE_LOCK_FAIL=1 expect "out-of-sync lockfile fails" 1 \
+  "FAIL: command failed: dart pub get --enforce-lockfile" "$r"
 
 r="$(new_repo)"
 : >"$r/k.yaml"
