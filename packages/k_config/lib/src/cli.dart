@@ -6,11 +6,20 @@ import 'dart:io';
 import 'package:k_config/src/loader.dart';
 import 'package:k_config/src/model.dart';
 import 'package:k_config/src/summary.dart';
+import 'package:k_config/src/workspace.dart';
 
 /// Validated values that `--get` can print, keyed by dotted path.
-final Map<String, String Function(KConfig config)> _getters = {
-  'coverage.default': (config) => '${config.coverage.defaultThreshold}',
-  'coverage.tool_version': (config) => config.coverage.toolVersion,
+///
+/// `coverage.thresholds` prints one `<package>\t<threshold>` line per
+/// workspace package, sorted by name: its `coverage.overrides` threshold, or
+/// `coverage.default`.
+final Map<String, String Function(KConfig config, Directory root)> _getters = {
+  'coverage.default': (config, _) => '${config.coverage.defaultThreshold}',
+  'coverage.thresholds': (config, root) => [
+    for (final package in Workspace.load(root).packages.toList()..sort())
+      '$package\t${config.coverage.thresholdFor(package)}',
+  ].join('\n'),
+  'coverage.tool_version': (config, _) => config.coverage.toolVersion,
 };
 
 const String _usage = 'Usage: k_config [--get <key>] [repository-root]';
@@ -61,7 +70,7 @@ int runCli(
     return 1;
   }
   if (key != null) {
-    out.writeln(_getters[key]!(config));
+    out.writeln(_getters[key]!(config, root));
     return 0;
   }
   final String summary = renderSummary(config);
