@@ -1,7 +1,8 @@
 # Global quality configuration of this repository.
-# It is validated by packages/k_config in the `k-config` CI check (not yet
-# a required check on main): an unknown key, a wrong type, a missing reason
-# or an unknown package fails it. See AGENTS.md for the schema.
+# It is validated by packages/k_config through tool/check.sh in the required
+# `test` check: an unknown key, a wrong type, a missing reason or an unknown
+# package fails it. tool/check.sh also reads coverage.default directly.
+# See AGENTS.md for the schema.
 coverage:
   default: 100
   overrides: {}
