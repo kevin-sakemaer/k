@@ -67,6 +67,7 @@ void main() {
       expect(config.comments.exclude, ['.dart_tool/**']);
       expect(config.comments.exceptions.single.path, endsWith('legacy.dart'));
       expect(config.comments.exceptions.single.reason, isNotEmpty);
+      expect(config.closeIssues.lookbackHours, 72);
     });
 
     test('accepts empty overrides and exceptions', () {
@@ -74,6 +75,7 @@ void main() {
 coverage: {default: 100, overrides: {}, tool_version: 1.16.0}
 dependencies: {exceptions: {}}
 comments: {include: ["**.dart"], exclude: [], exceptions: []}
+close_issues: {lookback_hours: 72}
 ''';
 
       expect(parse(source), isA<KConfigValid>());
@@ -82,7 +84,8 @@ comments: {include: ["**.dart"], exclude: [], exceptions: []}
     test('accepts the bounds 0 and 100', () {
       const empty =
           'dependencies: {exceptions: {}}\n'
-          'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n';
+          'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
+          'close_issues: {lookback_hours: 72}\n';
       for (final bound in [0, 100]) {
         final source =
             'coverage: {default: $bound, tool_version: 1.16.0, overrides: {}}\n'
@@ -137,7 +140,7 @@ comments: {include: ["**.dart"], exclude: [], exceptions: []}
         [
           message(
             'k.yaml: format: unknown key. Allowed keys: '
-            'comments, coverage, dependencies.',
+            'close_issues, comments, coverage, dependencies.',
           ),
         ],
       ),
@@ -170,7 +173,64 @@ comments: {include: ["**.dart"], exclude: [], exceptions: []}
           'k.yaml: comments: must be a mapping.',
           message(
             'k.yaml: unused: unknown key. Allowed keys: '
-            'comments, coverage, dependencies.',
+            'close_issues, comments, coverage, dependencies.',
+          ),
+        ],
+      ),
+      'a missing close_issues section': (
+        edit('close_issues:\n  lookback_hours: 72\n', ''),
+        ['k.yaml: close_issues: missing required key.'],
+      ),
+      'a close_issues section that is not a mapping': (
+        edit('close_issues:\n  lookback_hours: 72\n', 'close_issues: 72\n'),
+        ['k.yaml: close_issues: must be a mapping.'],
+      ),
+      'an unknown close_issues key': (
+        edit('  lookback_hours: 72', '  lookback_hours: 72\n  repo: x'),
+        [
+          message(
+            'k.yaml: close_issues.repo: unknown key. '
+            'Allowed keys: lookback_hours.',
+          ),
+        ],
+      ),
+      'a missing look-back window': (
+        edit('  lookback_hours: 72\n', '  {}\n'),
+        ['k.yaml: close_issues.lookback_hours: missing required key.'],
+      ),
+      'a zero look-back window': (
+        edit('lookback_hours: 72', 'lookback_hours: 0'),
+        [
+          message(
+            'k.yaml: close_issues.lookback_hours: '
+            'must be an integer from 1 to 720, found 0.',
+          ),
+        ],
+      ),
+      'a too long look-back window': (
+        edit('lookback_hours: 72', 'lookback_hours: 721'),
+        [
+          message(
+            'k.yaml: close_issues.lookback_hours: '
+            'must be an integer from 1 to 720, found 721.',
+          ),
+        ],
+      ),
+      'a look-back window that is not an integer': (
+        edit('lookback_hours: 72', 'lookback_hours: "72"'),
+        [
+          message(
+            'k.yaml: close_issues.lookback_hours: '
+            'must be an integer from 1 to 720, found "72".',
+          ),
+        ],
+      ),
+      'a look-back window written as a float': (
+        edit('lookback_hours: 72', 'lookback_hours: 72.0'),
+        [
+          message(
+            'k.yaml: close_issues.lookback_hours: '
+            'must be an integer from 1 to 720, found 72.0.',
           ),
         ],
       ),
@@ -217,7 +277,8 @@ comments: {include: ["**.dart"], exclude: [], exceptions: []}
       'a missing overrides key': (
         'coverage: {default: 100, tool_version: 1.16.0}\n'
             'dependencies: {exceptions: {}}\n'
-            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n',
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
+            'close_issues: {lookback_hours: 72}\n',
         ['k.yaml: coverage.overrides: missing required key.'],
       ),
       'a quoted threshold': (
@@ -493,19 +554,22 @@ comments: {include: ["**.dart"], exclude: [], exceptions: []}
       'dependency exceptions that are not a mapping': (
         'coverage: {default: 100, overrides: {}, tool_version: 1.16.0}\n'
             'dependencies: {exceptions: []}\n'
-            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n',
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
+            'close_issues: {lookback_hours: 72}\n',
         ['k.yaml: dependencies.exceptions: must be a mapping.'],
       ),
       'a dependencies section that is not a mapping': (
         'coverage: {default: 100, overrides: {}, tool_version: 1.16.0}\n'
             'dependencies: []\n'
-            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n',
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
+            'close_issues: {lookback_hours: 72}\n',
         ['k.yaml: dependencies: must be a mapping.'],
       ),
       'a coverage section that is not a mapping': (
         'coverage: 100\n'
             'dependencies: {exceptions: {}}\n'
-            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n',
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
+            'close_issues: {lookback_hours: 72}\n',
         ['k.yaml: coverage: must be a mapping.'],
       ),
       'comment exceptions that are not a list': (

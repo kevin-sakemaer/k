@@ -14,6 +14,8 @@ import 'package:k_config/src/workspace.dart';
 /// workspace package, sorted by name: its `coverage.overrides` threshold, or
 /// `coverage.default`.
 final Map<String, String Function(KConfig config, Directory root)> _getters = {
+  'close_issues.lookback_hours': (config, _) =>
+      '${config.closeIssues.lookbackHours}',
   'coverage.default': (config, _) => '${config.coverage.defaultThreshold}',
   'coverage.thresholds': (config, root) => [
     for (final package in Workspace.load(root).packages.toList()..sort())

@@ -30,6 +30,7 @@ void main() {
             CommentException(path: 'lib/legacy.dart', reason: 'Vendored.'),
           ],
         ),
+        closeIssues: CloseIssuesConfig(lookbackHours: 72),
       );
 
       expect(renderSummary(config), r'''
@@ -61,6 +62,10 @@ Allowed publishers: dart.dev, tools.dart.dev, labs.dart.dev.
 | --- | --- |
 | lib/legacy.dart | Vendored. |
 
+### Closing issues
+
+Look-back window of the close-issues sweep: 72 hours.
+
 ''');
     });
 
@@ -77,6 +82,7 @@ Allowed publishers: dart.dev, tools.dart.dev, labs.dart.dev.
           exclude: [],
           exceptions: [],
         ),
+        closeIssues: CloseIssuesConfig(lookbackHours: 1),
       );
 
       final String summary = renderSummary(config);

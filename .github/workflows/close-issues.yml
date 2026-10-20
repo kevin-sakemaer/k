@@ -1,0 +1,66 @@
+name: close-issues
+
+# Closes the issues linked as closing issues of PRs merged into main (#40).
+# Merges done by auto-merge with GITHUB_TOKEN neither apply closing keywords nor
+# start workflows (pull_request_target `closed` included), so this is a
+# scheduled sweep of the PRs merged within the k.yaml look-back window
+# (close_issues.lookback_hours, read through k_config). The issue set is
+# GitHub's own closingIssuesReferences, same repository only. The logic lives
+# in .github/scripts/close_issues.sh (tested by close_issues_test.sh).
+# Only code from main runs here: schedule always uses the default branch and
+# the job refuses a manual run on any other ref.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Process only this merged PR number (empty: sweep the look-back window)"
+        required: false
+        default: ""
+
+permissions: {}
+
+# One sweep at a time; a queued run waits instead of cancelling a running one.
+concurrency:
+  group: close-issues
+  cancel-in-progress: false
+
+jobs:
+  close-issues:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # checkout of main
+      issues: write # comment on and close issues
+      pull-requests: read # GraphQL closingIssuesReferences
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.5
+      - name: Cache the pub packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+      - run: dart pub get --enforce-lockfile
+      # No token here: k_config and its pub dependencies never see GH_TOKEN.
+      - name: Read the look-back window from k.yaml
+        id: window
+        shell: bash
+        run: |
+          hours="$(dart run packages/k_config/bin/k_config.dart --get close_issues.lookback_hours)"
+          echo "lookback_hours=$hours" >>"$GITHUB_OUTPUT"
+      - name: Close linked issues of merged PRs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          LOOKBACK_HOURS: ${{ steps.window.outputs.lookback_hours }}
+        run: bash .github/scripts/close_issues.sh

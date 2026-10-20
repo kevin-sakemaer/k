@@ -80,6 +80,7 @@ final class _Validator {
       'coverage',
       'dependencies',
       'comments',
+      'close_issues',
     });
     if (map == null) {
       return null;
@@ -102,16 +103,52 @@ final class _Validator {
       'comments',
       comments,
     );
+    final CloseIssuesConfig? closeIssuesConfig = field(
+      map,
+      path,
+      'close_issues',
+      closeIssues,
+    );
     if (coverageConfig == null ||
         dependenciesConfig == null ||
-        commentsConfig == null) {
+        commentsConfig == null ||
+        closeIssuesConfig == null) {
       return null;
     }
     return KConfig(
       coverage: coverageConfig,
       dependencies: dependenciesConfig,
       comments: commentsConfig,
+      closeIssues: closeIssuesConfig,
     );
+  }
+
+  CloseIssuesConfig? closeIssues(Object? value, String path) {
+    final Map<String, Object?>? map = strictMap(value, path, const {
+      'lookback_hours',
+    });
+    if (map == null) {
+      return null;
+    }
+    final int? hours = field(map, path, 'lookback_hours', lookbackHours);
+    return hours == null ? null : CloseIssuesConfig(lookbackHours: hours);
+  }
+
+  int? lookbackHours(Object? value, String path) {
+    final String? source = sourceText[path];
+    final String text = source == null || source.isEmpty ? '$value' : source;
+    if (value is! int ||
+        !_decimalInteger.hasMatch(text) ||
+        value < 1 ||
+        value > CloseIssuesConfig.maxLookbackHours) {
+      error(
+        path,
+        'must be an integer from 1 to '
+        '${CloseIssuesConfig.maxLookbackHours}, found $text.',
+      );
+      return null;
+    }
+    return value;
   }
 
   CoverageConfig? coverage(Object? value, String path) {
