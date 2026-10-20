@@ -45,6 +45,16 @@ void main() {
         'tools.dart.dev',
         'labs.dart.dev',
       ]);
+      expect(DependenciesConfig.registryUrl, 'https://pub.dev');
+      expect(DependenciesConfig.registryTimeout, const Duration(seconds: 30));
+      expect(DependenciesConfig.hostedAliases, [
+        'https://pub.dev',
+        'https://pub.dartlang.org',
+      ]);
+      expect(
+        DependenciesConfig.hostedAliases,
+        contains(DependenciesConfig.registryUrl),
+      );
       expect(
         config.dependencies.exceptions['third_party']?.reason,
         'Needed for the generated bindings.',

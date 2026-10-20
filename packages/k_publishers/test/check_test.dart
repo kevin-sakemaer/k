@@ -1,0 +1,124 @@
+import 'package:k_config/k_config.dart';
+import 'package:k_publishers/k_publishers.dart';
+import 'package:test/test.dart';
+
+import 'support.dart';
+
+DirectDependency dep(String name, [DependencySource s = .pubDev]) =>
+    DirectDependency(name, 'pubspec.yaml', s);
+
+DependenciesConfig config([List<String> excepted = const []]) =>
+    DependenciesConfig(
+      exceptions: {
+        for (final name in excepted)
+          name: const DependencyException(reason: 'r', approvedBy: 'Kevin'),
+      },
+    );
+
+void main() {
+  const expected = 'expected one of dart.dev, tools.dart.dev, labs.dart.dev.';
+  final client = FakeClient({
+    'yaml': 'tools.dart.dev',
+    'test': 'dart.dev',
+    'lab': 'labs.dart.dev',
+    'provider': 'dash-overflow.net',
+    'orphan': null,
+  });
+
+  test(
+    'accepts the allowed publishers and looks each package up once',
+    () async {
+      client.calls.clear();
+      expect(
+        await checkPublishers(
+          [dep('yaml'), dep('test'), dep('lab'), dep('test')],
+          config(),
+          client,
+        ),
+        isEmpty,
+      );
+      expect(client.calls, ['yaml', 'test', 'lab']);
+    },
+  );
+
+  test('rejects other, missing and unknown publishers', () async {
+    expect(
+      await checkPublishers(
+        [dep('provider'), dep('orphan'), dep('nope')],
+        config(),
+        client,
+      ),
+      [
+        'pubspec.yaml: provider: published by dash-overflow.net, $expected',
+        'pubspec.yaml: orphan: published by no verified publisher, $expected',
+        'pubspec.yaml: nope: nope: not found on https://pub.dev.',
+      ],
+    );
+  });
+
+  test('applies exceptions and reports unneeded ones', () async {
+    expect(
+      await checkPublishers(
+        [
+          dep('provider'),
+          dep('remote', .git),
+          dep('yaml'),
+          dep('local', .path),
+        ],
+        config(['provider', 'remote', 'yaml', 'local']),
+        client,
+      ),
+      [
+        'pubspec.yaml: yaml: unneeded exception (published by tools.dart.dev).',
+        'pubspec.yaml: local: unneeded exception (not from https://pub.dev).',
+      ],
+    );
+  });
+
+  test(
+    'rejects path, git and other-host overrides, even with an exception',
+    () async {
+      DirectDependency over(String name, DependencySource s) =>
+          DirectDependency(name, 'pubspec.yaml', s, isOverride: true);
+      const o = 'pubspec.yaml: dependency_overrides: ';
+      const must = 'an override must come from https://pub.dev.';
+      expect(
+        await checkPublishers(
+          [
+            over('local', .path),
+            over('remote', .git),
+            over('mine', .otherHost),
+            over('flutter', .sdk),
+            over('yaml', .pubDev),
+            over('provider', .pubDev),
+          ],
+          config(['remote']),
+          client,
+        ),
+        [
+          for (final name in ['local', 'remote', 'mine']) '$o$name: $must',
+          '${o}provider: published by dash-overflow.net, $expected',
+        ],
+      );
+    },
+  );
+
+  test('skips sdk and path, rejects git and other hosts', () async {
+    expect(
+      await checkPublishers(
+        [
+          dep('flutter', .sdk),
+          dep('local', .path),
+          dep('remote', .git),
+          dep('mine', .otherHost),
+        ],
+        config(),
+        client,
+      ),
+      [
+        'pubspec.yaml: remote: not hosted on https://pub.dev.',
+        'pubspec.yaml: mine: not hosted on https://pub.dev.',
+      ],
+    );
+  });
+}

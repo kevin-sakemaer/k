@@ -23,36 +23,12 @@ skip() {
   printf 'SKIP: %s\n' "$*"
   if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning::SKIP: $*"; fi
 }
-warn() {
-  printf 'WARNING: %s\n' "$*" >&2
-  if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning::$*"; fi
-}
 fail() {
   if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::error::$*"; fi
   printf 'FAIL: %s\n' "$*" >&2
   exit 1
 }
 run() { "$@" || fail "command failed: $*"; }
-
-# skip_missing <file> <issue>: skip a repository script that is not on main
-# yet. The skip is only allowed while its issue is open.
-skip_missing() {
-  local file="$1" issue="$2" state=""
-  if command -v gh >/dev/null 2>&1; then
-    state="$(gh issue view "$issue" --json state --jq .state 2>/dev/null)" || state=""
-  fi
-  case "$state" in
-    OPEN) skip "$file not found (issue #$issue is still open)." ;;
-    "")
-      # In CI an unverifiable skip must not pass silently; locally it warns.
-      if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-        fail "$file not found and the state of issue #$issue could not be checked (gh missing or failing): cannot verify the skip in CI"
-      fi
-      warn "$file not found and the state of issue #$issue could not be checked (gh missing or failing)."
-      ;;
-    *) fail "$file not found but issue #$issue is $state: the script was expected by now" ;;
-  esac
-}
 
 # k.yaml is mandatory: there is no default value outside of it.
 [ -f k.yaml ] || fail "k.yaml is required"
@@ -79,9 +55,7 @@ dart format --output=none --set-exit-if-changed . \
 step "dart analyze --fatal-infos"
 dart analyze --fatal-infos || fail "dart analyze reported diagnostics"
 
-# Repository scripts introduced by other issues. A check whose script is not
-# on main yet is skipped while its issue is open, and fails the job once the
-# issue is closed. A script that is already on main must exist.
+# Repository scripts: every one is required, a missing script fails the job.
 
 # run_script <file> <args>...: runs a repository script. A workspace package
 # executable (packages/<name>/bin/<name>.dart) is run by package name, because
@@ -98,25 +72,20 @@ run_script() {
   fi
 }
 
-# check_script <label> <issue|required> <file> [args]...: runs <file>. When it
-# is missing, "required" fails the job; an issue number applies skip_missing.
+# check_script <label> <file> [args]...: runs <file>; a missing <file> fails
+# the job.
 check_script() {
-  local label="$1" issue="$2" file="$3"
-  shift 3
+  local label="$1" file="$2"
+  shift 2
   step "$label"
-  if [ -f "$file" ]; then
-    run_script "$file" "$@" || fail "$label failed"
-  elif [ "$issue" = required ]; then
-    fail "$file not found: the $label is required"
-  else
-    skip_missing "$file" "$issue"
-  fi
+  [ -f "$file" ] || fail "$file not found: the $label is required"
+  run_script "$file" "$@" || fail "$label failed"
 }
 
 # k.yaml validation: k_config is the only reader of k.yaml. This script never
 # parses it and reads every value it needs through `k_config --get`.
 k_config="packages/k_config/bin/k_config.dart"
-check_script "k.yaml validation (k_config)" required "$k_config"
+check_script "k.yaml validation (k_config)" "$k_config"
 
 # kget <key>: the validated value of <key> in k.yaml, printed by k_config.
 kget() {
@@ -142,17 +111,18 @@ threshold_of() {
 # the lcov report, so that local and CI runs use the same tool.
 coverage_version="$(kget coverage.tool_version)" || exit 1
 
-# TODO(#4): dependency publishers check; #4 may change this location.
-check_script "dependency publishers check" 4 "packages/k_publishers/bin/k_publishers.dart"
+# Dependency publishers check (#4): exceptions come from k.yaml through
+# package:k_config, the allowed publishers are fixed in k_config.
+check_script "dependency publishers check" "packages/k_publishers/bin/k_publishers.dart"
 
 # ///-only comments check (#9, package from #20), on main: always required.
 # k_comments reads its globs and exceptions from the comments section of
 # k.yaml through k_config, so no value is passed here.
-check_script "comments check" required "packages/k_comments/bin/k_comments.dart"
+check_script "comments check" "packages/k_comments/bin/k_comments.dart"
 
 # Hardened CI rules for every workflow (#6): a YAML parse of
 # .github/workflows checks pinned uses:, timeouts and permissions.
-check_script "workflow hardening (#6)" required "packages/k_workflows/bin/k_workflows.dart"
+check_script "workflow hardening (#6)" "packages/k_workflows/bin/k_workflows.dart"
 
 step "workspace packages"
 ws_json="$(dart pub workspace list --json)" \
