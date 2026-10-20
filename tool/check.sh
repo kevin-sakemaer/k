@@ -144,7 +144,7 @@ coverage_version="$(kget coverage.tool_version)" || exit 1
 
 # Dependency publishers check (#4): exceptions come from k.yaml through
 # package:k_config, the allowed publishers are fixed in k_config.
-check_script "dependency publishers check" 4 "packages/k_publishers/bin/k_publishers.dart"
+check_script "dependency publishers check" required "packages/k_publishers/bin/k_publishers.dart"
 
 # ///-only comments check (#9, package from #20), on main: always required.
 # k_comments reads its globs and exceptions from the comments section of

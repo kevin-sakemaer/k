@@ -24,10 +24,13 @@ enum DependencySource {
   otherHost,
 }
 
-/// A direct dependency, regular or dev, of a workspace pubspec.
+/// A direct dependency, regular or dev, or a dependency override of a
+/// workspace pubspec.
 final class DirectDependency {
   /// Creates a dependency named [name] declared in [pubspec].
-  const new(this.name, this.pubspec, this.source);
+  ///
+  /// [isOverride] is true for an entry of `dependency_overrides`.
+  const new(this.name, this.pubspec, this.source, {this.isOverride = false});
 
   /// Name of the package.
   final String name;
@@ -37,10 +40,14 @@ final class DirectDependency {
 
   /// Where the package comes from.
   final DependencySource source;
+
+  /// Whether the entry comes from `dependency_overrides`.
+  final bool isOverride;
 }
 
-/// Reads the direct dependencies of the root pubspec and of every workspace
-/// member under [root], skipping the workspace packages themselves.
+/// Reads the direct dependencies and the `dependency_overrides` of the root
+/// pubspec and of every workspace member under [root], skipping the
+/// workspace packages themselves.
 ///
 /// Throws a [WorkspaceException] when a pubspec is missing or malformed.
 List<DirectDependency> readDirectDependencies(Directory root) {
@@ -54,11 +61,20 @@ List<DirectDependency> readDirectDependencies(Directory root) {
   return [
     for (final MapEntry(key: String path, value: YamlMap pubspec)
         in pubspecs.entries)
-      for (final section in const ['dependencies', 'dev_dependencies'])
+      for (final section in const [
+        'dependencies',
+        'dev_dependencies',
+        'dependency_overrides',
+      ])
         if (_section(pubspec, section) case final deps?)
           for (final MapEntry(:Object? key, :Object? value) in deps.entries)
             if (!workspace.packages.contains('$key'))
-              DirectDependency('$key', path, _source(value)),
+              DirectDependency(
+                '$key',
+                path,
+                _source(value),
+                isOverride: section == 'dependency_overrides',
+              ),
   ];
 }
 

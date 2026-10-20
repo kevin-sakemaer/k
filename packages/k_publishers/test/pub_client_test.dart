@@ -90,6 +90,37 @@ void main() {
     );
   });
 
+  test('fails closed when the server never answers', () async {
+    final ServerSocket silent = await ServerSocket.bind(
+      InternetAddress.loopbackIPv4,
+      0,
+    );
+    final sockets = <Socket>[];
+    silent.listen(sockets.add);
+    addTearDown(() async {
+      for (final socket in sockets) {
+        socket.destroy();
+      }
+      await silent.close();
+    });
+    final slow = PubDevClient(
+      HttpClient(),
+      baseUri: Uri.http('127.0.0.1:${silent.port}'),
+      timeout: const Duration(milliseconds: 200),
+    );
+    addTearDown(slow.close);
+    await expectLater(
+      slow.publisherOf('yaml'),
+      throwsA(
+        isA<PublisherLookupException>().having(
+          (e) => e.message,
+          'message',
+          contains('timed out after 0:00:00.200000'),
+        ),
+      ),
+    );
+  });
+
   test('defaults to pub.dev', () {
     PubDevClient(HttpClient()).close();
   });

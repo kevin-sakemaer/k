@@ -46,6 +46,7 @@ void main() {
         'labs.dart.dev',
       ]);
       expect(DependenciesConfig.registryUrl, 'https://pub.dev');
+      expect(DependenciesConfig.registryTimeout, const Duration(seconds: 30));
       expect(DependenciesConfig.hostedAliases, [
         'https://pub.dev',
         'https://pub.dartlang.org',

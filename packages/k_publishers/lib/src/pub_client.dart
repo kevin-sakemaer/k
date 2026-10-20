@@ -1,6 +1,7 @@
 /// Looks up the verified publisher of a package on pub.dev.
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -32,12 +33,17 @@ final class PubDevClient implements PublisherClient {
   /// [PublisherClient] that queries the publisher API of the registry.
   ///
   /// [baseUri] defaults to [DependenciesConfig.registryUrl]; tests point it
-  /// to a local server.
-  new(this._http, {Uri? baseUri})
-    : _base = baseUri ?? Uri.parse(DependenciesConfig.registryUrl);
+  /// to a local server. [timeout] bounds the connection and the whole
+  /// request; it defaults to [DependenciesConfig.registryTimeout].
+  new(this._http, {Uri? baseUri, Duration? timeout})
+    : _base = baseUri ?? Uri.parse(DependenciesConfig.registryUrl),
+      _timeout = timeout ?? DependenciesConfig.registryTimeout {
+    _http.connectionTimeout = _timeout;
+  }
 
   final HttpClient _http;
   final Uri _base;
+  final Duration _timeout;
 
   @override
   Future<String?> publisherOf(String package) async {
@@ -47,10 +53,11 @@ final class PubDevClient implements PublisherClient {
     final String body;
     final int status;
     try {
-      final HttpClientRequest request = await _http.getUrl(uri);
-      final HttpClientResponse response = await request.close();
-      status = response.statusCode;
-      body = await response.transform(utf8.decoder).join();
+      (status, body) = await _get(uri).timeout(_timeout);
+    } on TimeoutException {
+      throw PublisherLookupException(
+        '$package: request to $uri timed out after $_timeout.',
+      );
     } on IOException catch (error) {
       throw PublisherLookupException(
         '$package: request to $uri failed: $error',
@@ -79,6 +86,15 @@ final class PubDevClient implements PublisherClient {
     };
   }
 
+  Future<(int, String)> _get(Uri uri) async {
+    final HttpClientRequest request = await _http.getUrl(uri);
+    final HttpClientResponse response = await request.close();
+    return (response.statusCode, await response.transform(utf8.decoder).join());
+  }
+
   /// Closes the underlying HTTP client.
-  void close() => _http.close();
+  ///
+  /// Pending requests are aborted, so that a timed out request does not keep
+  /// the process alive.
+  void close() => _http.close(force: true);
 }

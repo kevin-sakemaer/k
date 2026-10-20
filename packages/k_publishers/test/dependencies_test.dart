@@ -43,6 +43,31 @@ void main() {
     );
   });
 
+  test('reads dependency_overrides of the root and of members', () {
+    writeWorkspace(
+      root,
+      rootDeps:
+          'dependency_overrides:\n'
+          '  a: {path: packages/a}\n'
+          '  yaml: ^3.1.0\n',
+      memberDeps:
+          'dependency_overrides:\n'
+          '  remote: {git: https://example.com/r.git}\n'
+          '  local: {path: ../local}\n',
+    );
+    expect(
+      [
+        for (final d in readDirectDependencies(root))
+          (d.name, d.pubspec, d.source, d.isOverride),
+      ],
+      [
+        ('yaml', 'pubspec.yaml', DependencySource.pubDev, true),
+        ('remote', 'packages/a/pubspec.yaml', DependencySource.git, true),
+        ('local', 'packages/a/pubspec.yaml', DependencySource.path, true),
+      ],
+    );
+  });
+
   test('throws on a broken workspace', () {
     File('${root.path}/pubspec.yaml').writeAsStringSync('name: root\n');
     expect(

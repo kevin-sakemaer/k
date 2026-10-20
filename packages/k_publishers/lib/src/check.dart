@@ -10,8 +10,11 @@ import 'package:k_publishers/src/pub_client.dart';
 /// A pub.dev dependency must be published by one of
 /// [DependenciesConfig.allowedPublishers] unless [config] lists it in its
 /// exceptions. SDK and path dependencies are skipped. Git and other hosts are
-/// never allowed without an exception. An exception that is not needed is a
-/// problem too, so that the list stays minimal.
+/// never allowed without an exception. A `dependency_overrides` entry from
+/// `path`, `git` or another host always fails (overrides of workspace
+/// packages are never listed); a pub.dev override goes through the publisher
+/// check. An exception that is not needed is a problem too, so that the list
+/// stays minimal.
 Future<List<String>> checkPublishers(
   List<DirectDependency> dependencies,
   DependenciesConfig config,
@@ -22,9 +25,18 @@ Future<List<String>> checkPublishers(
   final publishers = <String, Future<String?>>{};
   for (final dependency in dependencies) {
     final String name = dependency.name;
-    final where = '${dependency.pubspec}: $name';
+    final where = dependency.isOverride
+        ? '${dependency.pubspec}: dependency_overrides: $name'
+        : '${dependency.pubspec}: $name';
     final bool excepted = config.exceptions.containsKey(name);
-    switch (dependency.source) {
+    final DependencySource source = dependency.source;
+    if (dependency.isOverride &&
+        source != DependencySource.pubDev &&
+        source != DependencySource.sdk) {
+      problems.add('$where: an override must come from $registry.');
+      continue;
+    }
+    switch (source) {
       case DependencySource.sdk || DependencySource.path:
         if (excepted) {
           problems.add('$where: unneeded exception (not from $registry).');

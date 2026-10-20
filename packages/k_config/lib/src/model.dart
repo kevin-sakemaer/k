@@ -79,6 +79,12 @@ final class DependenciesConfig {
   /// configurable registry would bypass [allowedPublishers].
   static const String registryUrl = 'https://pub.dev';
 
+  /// Longest time allowed to connect to [registryUrl] and to receive a whole
+  /// publisher response. A lookup that takes longer fails the check.
+  ///
+  /// The value is fixed and cannot be changed from `k.yaml`.
+  static const Duration registryTimeout = Duration(seconds: 30);
+
   /// `hosted` URLs, without a trailing slash, that name the registry at
   /// [registryUrl]. A dependency hosted anywhere else needs an entry in
   /// [exceptions].

@@ -109,6 +109,7 @@ new_repo() {
   add_pkg_script "$d" k_comments
   add_pkg_script "$d" k_config
   add_pkg_script "$d" k_workflows
+  add_pkg_script "$d" k_publishers
   echo "$d"
 }
 
@@ -312,22 +313,23 @@ r="$(new_repo)"
 printf '/// Library.\nlibrary;\n\nexport "a.dart"\n    show one;\n' >"$r/packages/a/lib/all.dart"
 expect "export-only lib file is not counted" 0 "All checks passed." "$r"
 
-# Skips of repository scripts.
-r="$(new_repo)"
-CI_MODE=true expect "skip emits a CI warning" 0 \
-  "::warning::SKIP: packages/k_publishers/bin/k_publishers.dart not found" "$r"
+# The publishers check (#4) is required: a missing checker fails whatever
+# the state of issue #4 or of gh (these cases used to be skips).
+nopub="packages/k_publishers/bin/k_publishers.dart not found: the dependency publishers check is required"
+r="$(new_repo)"; rm -r "$r/packages/k_publishers"
+CI_MODE=true expect "missing publishers checker fails in CI" 1 "::error::$nopub" "$r"
 
-r="$(new_repo)"
-FAKE_GH_STATE=CLOSED expect "skip fails once the issue is closed" 1 \
-  "issue #4 is CLOSED" "$r"
+r="$(new_repo)"; rm -r "$r/packages/k_publishers"
+expect "missing publishers checker fails while #4 is open" 1 "$nopub" "$r"
 
-r="$(new_repo)"
-FAKE_GH_FAIL=1 expect "unknown issue state only warns locally" 0 \
-  "state of issue #4 could not be checked" "$r"
+r="$(new_repo)"; rm -r "$r/packages/k_publishers"
+FAKE_GH_STATE=CLOSED expect "missing publishers checker fails once #4 is closed" 1 "$nopub" "$r"
 
-r="$(new_repo)"
-FAKE_GH_FAIL=1 CI_MODE=true expect "unknown issue state fails in CI" 1 \
-  "::error::packages/k_publishers/bin/k_publishers.dart not found and the state of issue #4 could not be checked" "$r"
+r="$(new_repo)"; rm -r "$r/packages/k_publishers"
+FAKE_GH_FAIL=1 expect "missing publishers checker fails locally without gh" 1 "$nopub" "$r"
+
+r="$(new_repo)"; rm -r "$r/packages/k_publishers"
+FAKE_GH_FAIL=1 CI_MODE=true expect "missing publishers checker fails in CI without gh" 1 "$nopub" "$r"
 
 # Repository script locations and invocation.
 r="$(new_repo)"
@@ -360,15 +362,18 @@ if ran "$r" "tool/check_comments.dart"; then
   echo "FAIL - tool/check_comments.dart was run"; failed=$((failed + 1))
 fi
 
-r="$(new_repo)"
+r="$(new_repo)"; rm -r "$r/packages/k_publishers"
 printf 'void main() {}\n' >"$r/tool/check_publishers.dart"
-expect "publishers: only the package location counts" 0 \
-  "packages/k_publishers/bin/k_publishers.dart not found (issue #4 is still open)" "$r"
+expect "publishers: only the package location counts" 1 "$nopub" "$r"
+if ran "$r" "tool/check_publishers.dart"; then
+  echo "FAIL - tool/check_publishers.dart was run"; failed=$((failed + 1))
+fi
 
 r="$(new_repo)"
-add_pkg_script "$r" k_config
-FAKE_GH_STATE=CLOSED expect "missing publishers checker fails once #4 is closed" 1 \
-  "packages/k_publishers/bin/k_publishers.dart not found but issue #4 is CLOSED" "$r"
+expect "publishers checker runs by name" 0 "All checks passed." "$r"
+if ! ran "$r" "dart run k_publishers"; then
+  echo "FAIL - publishers checker runs by name (not invoked)"; failed=$((failed + 1))
+fi
 
 r="$(new_repo)"
 rm "$r/pubspec.yaml"

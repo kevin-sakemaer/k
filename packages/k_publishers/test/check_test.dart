@@ -75,6 +75,34 @@ void main() {
     );
   });
 
+  test(
+    'rejects path, git and other-host overrides, even with an exception',
+    () async {
+      DirectDependency over(String name, DependencySource s) =>
+          DirectDependency(name, 'pubspec.yaml', s, isOverride: true);
+      const o = 'pubspec.yaml: dependency_overrides: ';
+      const must = 'an override must come from https://pub.dev.';
+      expect(
+        await checkPublishers(
+          [
+            over('local', .path),
+            over('remote', .git),
+            over('mine', .otherHost),
+            over('flutter', .sdk),
+            over('yaml', .pubDev),
+            over('provider', .pubDev),
+          ],
+          config(['remote']),
+          client,
+        ),
+        [
+          for (final name in ['local', 'remote', 'mine']) '$o$name: $must',
+          '${o}provider: published by dash-overflow.net, $expected',
+        ],
+      );
+    },
+  );
+
   test('skips sdk and path, rejects git and other hosts', () async {
     expect(
       await checkPublishers(
