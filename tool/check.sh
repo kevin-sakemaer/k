@@ -10,11 +10,6 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
-# Version of package:coverage (publisher tools.dart.dev) used to build the
-# lcov report. Pinned so local and CI runs use the same tool.
-# TODO(#13): move coverage_version to k.yaml once k_config lands.
-coverage_version="1.16.0"
-
 fast=false
 for arg in "$@"; do
   case "$arg" in
@@ -59,6 +54,9 @@ skip_missing() {
   esac
 }
 
+# k.yaml is mandatory: there is no default value outside of it.
+[ -f k.yaml ] || fail "k.yaml is required"
+
 step "bash tests"
 for t in .github/scripts/review_gate_test.sh .github/scripts/github_guard_test.sh tool/check_test.sh; do
   if [ -f "$t" ]; then
@@ -68,27 +66,6 @@ done
 
 if [ ! -f pubspec.yaml ]; then
   fail "pubspec.yaml is missing at the repository root"
-fi
-
-# Coverage threshold: coverage.default in k.yaml, a YAML integer in [0, 100].
-# A missing k.yaml or key falls back to 100% and still fails the job.
-threshold_error=""
-threshold=""
-if [ -f k.yaml ]; then
-  threshold="$(awk '
-    /^[^[:space:]#]/ { in_cov = ($0 ~ /^coverage:/) }
-    in_cov && /^[[:space:]]+default:/ {
-      sub(/^[[:space:]]+default:[[:space:]]*/, ""); sub(/[[:space:]]+#.*$/, "")
-      sub(/[[:space:]]+$/, ""); print; found = 1; exit
-    }
-    END { if (!found) print "<missing>" }
-  ' k.yaml)"
-fi
-if [ -z "$threshold" ] || [ "$threshold" = "<missing>" ]; then
-  threshold_error="k.yaml with coverage.default is required; defaulting to 100%"
-  threshold=100
-elif ! [[ "$threshold" =~ ^(0|[1-9][0-9]*)$ ]] || [ "$threshold" -gt 100 ]; then
-  fail "k.yaml coverage.default must be a YAML integer from 0 to 100, got: $threshold"
 fi
 
 step "dart pub get"
@@ -135,16 +112,33 @@ check_script() {
   fi
 }
 
-# TODO(#13): k_config lands with PR #13.
-check_script "k.yaml validation (k_config)" 13 "packages/k_config/bin/k_config.dart"
+# k.yaml validation: k_config is the only reader of k.yaml. This script never
+# parses it and reads every value it needs through `k_config --get`.
+k_config="packages/k_config/bin/k_config.dart"
+check_script "k.yaml validation (k_config)" required "$k_config"
+
+# kget <key>: the validated value of <key> in k.yaml, printed by k_config.
+kget() {
+  local value
+  value="$(run_script "$k_config" --get "$1")" \
+    || fail "could not read $1 from k.yaml through k_config"
+  [ -n "$value" ] || fail "k_config printed an empty value for $1"
+  printf '%s' "$value"
+}
+
+# Line coverage threshold of every package, in percent.
+threshold="$(kget coverage.default)" || exit 1
+# Exact version of package:coverage (publisher tools.dart.dev) used to build
+# the lcov report, so that local and CI runs use the same tool.
+coverage_version="$(kget coverage.tool_version)" || exit 1
 
 # TODO(#4): dependency publishers check; #4 may change this location.
 check_script "dependency publishers check" 4 "packages/k_publishers/bin/k_publishers.dart"
 
 # ///-only comments check (#9, package from #20), on main: always required.
 # It scans every .dart file except the generated .dart_tool directories.
-# TODO(#13): read the scan globs and comments.exceptions from k.yaml through
-# k_config once #13 lands; k.yaml has no comments section on main yet.
+# TODO(#9): read the scan globs and comments.exceptions from k.yaml through
+# k_config: k.yaml already has a comments section.
 check_script "comments check" required "packages/k_comments/bin/k_comments.dart" \
   --root . --include '**.dart' --exclude '.dart_tool/**' --exclude '**/.dart_tool/**'
 
@@ -182,7 +176,6 @@ printf 'Packages: %s\n' "${packages[*]}"
 
 if [ "$fast" = true ]; then
   skip "--fast: tests and coverage are left to the pre-push hook and CI."
-  [ -z "$threshold_error" ] || fail "$threshold_error"
   exit 0
 fi
 
@@ -251,7 +244,6 @@ for pkg in "${packages[@]}"; do
     || fail "coverage of $pkg is ${pct}%, below the threshold ${threshold}%"
 done
 
-[ -z "$threshold_error" ] || fail "$threshold_error"
 
 echo
 echo "All checks passed."

@@ -39,6 +39,16 @@ case "$1 ${2:-}" in
       sed "s|@PKG@|$PWD|g" fake.lcov >"$out"
     fi
     ;;
+  "run k_config")
+    echo "dart $*" >>.fake_runs
+    [ -z "${FAKE_KCONFIG_FAIL:-}" ] || {
+      echo "k.yaml: invalid YAML" >&2
+      exit 1
+    }
+    if [ "${3:-}" = "--get" ]; then
+      awk -v k="$4" '$1 == k { print $2 }' .fake_kconfig
+    fi
+    ;;
   "test "*)
     for a in "$@"; do
       case "$a" in --coverage=*) mkdir -p "${a#--coverage=}" ;; esac
@@ -77,12 +87,14 @@ new_repo() {
   mkdir -p "$d/tool" "$d/packages/a/lib" "$d/packages/a/test"
   cp "$check" "$d/tool/check.sh"
   printf 'name: ws\nworkspace:\n  - packages/a\n' >"$d/pubspec.yaml"
-  printf 'coverage:\n  default: 100\n  overrides: {}\n' >"$d/k.yaml"
+  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n' >"$d/k.yaml"
+  printf 'coverage.default 100\ncoverage.tool_version 1.16.0\n' >"$d/.fake_kconfig"
   printf '.\npackages/a\n' >"$d/.fake_ws"
   printf 'int one() {\n  return 1;\n}\n' >"$d/packages/a/lib/a.dart"
   printf 'void main() {}\n' >"$d/packages/a/test/a_test.dart"
   printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:2\nend_of_record\n' >"$d/packages/a/fake.lcov"
   add_pkg_script "$d" k_comments
+  add_pkg_script "$d" k_config
   echo "$d"
 }
 
@@ -127,42 +139,61 @@ mkdir -p "$r/lib"
 printf 'int root() => 0;\n' >"$r/lib/root.dart"
 expect "workspace root with lib/ and no tests fails" 1 "package . has no test" "$r"
 
-# Blocking 2: threshold validation.
-for bad in '"100"' "'100'" abc 101 100.0 -1 '' 1e2; do
-  r="$(new_repo)"
-  printf 'coverage:\n  default: %s\n' "$bad" >"$r/k.yaml"
-  if [ -z "$bad" ]; then
-    expect "empty coverage.default fails" 1 "coverage.default is required" "$r"
-  else
-    expect "coverage.default $bad is rejected" 1 "must be a YAML integer from 0 to 100" "$r"
-  fi
-done
-
+# Blocking 2: every k.yaml value comes from k_config, never from parsing.
 r="$(new_repo)"
-printf 'coverage:\n  default: 50 # comment\n' >"$r/k.yaml"
+printf 'coverage.default 50\ncoverage.tool_version 1.16.0\n' >"$r/.fake_kconfig"
 printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
-expect "integer threshold with a comment is used" 0 "required 50%" "$r"
+expect "threshold read through k_config is used" 0 "required 50%" "$r"
 
 r="$(new_repo)"
-printf 'coverage:\n  default: 100\n' >"$r/k.yaml"
 printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
 expect "coverage below the threshold fails" 1 "below the threshold 100%" "$r"
 
-# Blocking 3: k.yaml and coverage.default are required.
+r="$(new_repo)"
+rm -r "$r/packages/k_config"
+expect "missing k_config fails: k.yaml validation is required" 1 \
+  "packages/k_config/bin/k_config.dart not found: the k.yaml validation (k_config) is required" "$r"
+
+r="$(new_repo)"
+FAKE_KCONFIG_FAIL=1 expect "an invalid k.yaml fails" 1 "FAIL: k.yaml validation (k_config) failed" "$r"
+
+r="$(new_repo)"
+printf 'coverage.tool_version 1.16.0\n' >"$r/.fake_kconfig"
+expect "a value k_config does not print fails" 1 \
+  "k_config printed an empty value for coverage.default" "$r"
+
+r="$(new_repo)"
+: >"$r/k.yaml"
+expect "k.yaml is never parsed by check.sh" 0 "All checks passed." "$r"
+if ! ran "$r" "dart run k_config --get coverage.tool_version"; then
+  echo "FAIL - k.yaml values are read by name through k_config --get"; failed=$((failed + 1))
+fi
+
+# Blocking 3: k.yaml is required and checked first.
 r="$(new_repo)"
 rm "$r/k.yaml"
-expect "missing k.yaml fails with a 100% default" 1 \
-  "k.yaml with coverage.default is required; defaulting to 100%" "$r"
+expect "missing k.yaml fails first" 1 "FAIL: k.yaml is required" "$r"
+
+r="$(new_repo)"
+rm "$r/k.yaml" "$r/pubspec.yaml"
+out="$(cd "$r" && PATH="$bin:$PATH" bash tool/check.sh 2>&1)" && code=0 || code=$?
+if [ "$code" != 0 ] && [ "$(printf '%s\n' "$out" | tail -n 1)" = "FAIL: k.yaml is required" ] \
+  && ! grep -q "==>" <<<"$out"; then
+  echo "ok   - missing k.yaml fails before any other step"
+  pass=$((pass + 1))
+else
+  echo "FAIL - missing k.yaml fails before any other step (exit $code)"
+  sed 's/^/       /' <<<"$out"
+  failed=$((failed + 1))
+fi
 
 r="$(new_repo)"
 rm "$r/k.yaml"
-printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
-expect "missing k.yaml still enforces 100%" 1 "below the threshold 100%" "$r"
-
-r="$(new_repo)"
-printf 'coverage:\n  overrides: {}\ncomments:\n  default: 0\n' >"$r/k.yaml"
-expect "missing coverage.default fails" 1 \
-  "k.yaml with coverage.default is required; defaulting to 100%" "$r"
+printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:0\nend_of_record\n' >"$r/packages/a/fake.lcov"
+for mode in "" true; do
+  CI_MODE="$mode" expect "missing k.yaml is never green (CI=${mode:-false})" 1 \
+    "k.yaml is required" "$r"
+done
 
 # Blocking 4: lib/ files that no test loads count as 0%.
 r="$(new_repo)"
@@ -182,19 +213,19 @@ expect "export-only lib file is not counted" 0 "All checks passed." "$r"
 # Skips of repository scripts.
 r="$(new_repo)"
 CI_MODE=true expect "skip emits a CI warning" 0 \
-  "::warning::SKIP: packages/k_config/bin/k_config.dart not found" "$r"
+  "::warning::SKIP: packages/k_publishers/bin/k_publishers.dart not found" "$r"
 
 r="$(new_repo)"
 FAKE_GH_STATE=CLOSED expect "skip fails once the issue is closed" 1 \
-  "issue #13 is CLOSED" "$r"
+  "issue #4 is CLOSED" "$r"
 
 r="$(new_repo)"
 FAKE_GH_FAIL=1 expect "unknown issue state only warns locally" 0 \
-  "state of issue #13 could not be checked" "$r"
+  "state of issue #4 could not be checked" "$r"
 
 r="$(new_repo)"
 FAKE_GH_FAIL=1 CI_MODE=true expect "unknown issue state fails in CI" 1 \
-  "::error::packages/k_config/bin/k_config.dart not found and the state of issue #13 could not be checked" "$r"
+  "::error::packages/k_publishers/bin/k_publishers.dart not found and the state of issue #4 could not be checked" "$r"
 
 # Repository script locations and invocation.
 r="$(new_repo)"
@@ -258,6 +289,59 @@ r="$(new_repo)"
 mkdir -p "$r/test"
 printf 'void main() {}\n' >"$r/test/root_test.dart"
 expect "root tests without lib/ run without coverage" 0 "dart test (workspace root, no lib/)" "$r"
+
+# The Reviewer's cases on #13, against the real k_config when a Dart SDK is
+# available: check.sh reads k.yaml only through it.
+real_dart="$(command -v dart || true)"
+if [ -n "$real_dart" ] && [ -f "$here/../packages/k_config/bin/k_config.dart" ]; then
+  kroot="$(mktemp -d "$work/kroot.XXXX")"
+  mkdir -p "$kroot/packages/a"
+  printf 'name: ws\nworkspace:\n  - packages/a\n' >"$kroot/pubspec.yaml"
+  printf 'name: a\nresolution: workspace\n' >"$kroot/packages/a/pubspec.yaml"
+  kget_real() {
+    (cd "$here/.." && "$real_dart" run packages/k_config/bin/k_config.dart --get "$1" "$kroot" 2>&1)
+  }
+  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  if got="$(kget_real coverage.tool_version)" && [ "$got" = "1.16.0" ]; then
+    echo "ok   - flow style k.yaml is read by k_config"
+    pass=$((pass + 1))
+  else
+    echo "FAIL - flow style k.yaml is read by k_config: $got"
+    failed=$((failed + 1))
+  fi
+  # The Guardian's coverage.default cases, now enforced by k_config.
+  for bad in '"100"' "'100'" abc 101 100.0 -1 '' 1e2 0x64 +100; do
+    printf 'coverage:\n  default: %s\n  tool_version: 1.16.0\n  overrides: {}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' "$bad" >"$kroot/k.yaml"
+    if got="$(kget_real coverage.default)"; then
+      echo "FAIL - coverage.default $bad is rejected: $got"
+      failed=$((failed + 1))
+    elif grep -qF "coverage.default: must be an integer from 0 to 100" <<<"$got"; then
+      echo "ok   - coverage.default ${bad:-(empty)} is rejected"
+      pass=$((pass + 1))
+    else
+      echo "FAIL - coverage.default ${bad:-(empty)} is rejected with the wrong message: $got"
+      failed=$((failed + 1))
+    fi
+  done
+  printf 'coverage:\n  default: 50 # comment\n  tool_version: 1.16.0\n  overrides: {}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  if got="$(kget_real coverage.default)" && [ "$got" = 50 ]; then
+    echo "ok   - integer coverage.default with a comment is used"
+    pass=$((pass + 1))
+  else
+    echo "FAIL - integer coverage.default with a comment is used: $got"
+    failed=$((failed + 1))
+  fi
+  printf 'coverage:\n  default: 100\n  tool_version: "1.16.0\n  overrides: {}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  if got="$(kget_real coverage.tool_version)"; then
+    echo "FAIL - unbalanced quote in k.yaml is rejected: $got"
+    failed=$((failed + 1))
+  else
+    echo "ok   - unbalanced quote in k.yaml is rejected"
+    pass=$((pass + 1))
+  fi
+else
+  echo "SKIP - real k_config cases (no Dart SDK)"
+fi
 
 echo "$pass passed, $failed failed"
 [ "$failed" -eq 0 ]
