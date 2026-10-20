@@ -77,10 +77,13 @@ tool/install_hooks.sh
   - `owner/repo[/path]@<40-character commit SHA>` with exactly one `@`, followed on its line by the version in a comment (`# vX.Y.Z`); quoting the value is fine;
   - a local action (`./...`);
   - a Docker image pinned by digest (`docker://image@sha256:<64 hex>`).
+- Path segments are never empty, `.` or `..` (no `a/b/x/@sha`, `a/b/../c@sha`, `./a//b`). A job-level `uses:` (reusable workflow call) is either `./.github/workflows/<file>`, one of the linted workflows, or a SHA-pinned remote workflow; never a Docker image.
+- Every job `container` image (string or `image:` key) and every `services.<id>.image` is pinned by digest (`image@sha256:<64 hex>`).
 - Every workflow sets exactly `permissions: {}` at the top level.
 - Job `permissions`, when set, is a mapping of explicit GitHub scopes (`contents`, `pull-requests`, ...) to `read`, `write` or `none`. A shorthand such as `write-all` or `read-all` and an unknown scope are rejected. Each job grants only the scopes it uses.
 - Every job-level `write` is an explicit exception declared in `workflows.write_scopes` of `k.yaml`, with its workflow file name, job, scope and reason (#39). An undeclared `write` fails, and so does a declared entry that no longer matches a job granting that `write` (stale exception). The `k-config` job summary lists every declared write scope.
-- Every job that runs steps sets a positive integer `timeout-minutes`, at most `workflows.max_timeout_minutes` of `k.yaml` (#39). A job that calls a reusable workflow cannot set one.
+- A new write scope must be justified in the PR that adds it, by one line in this file naming the workflow, job, scope and why `read` is not enough.
+- Every job that runs steps sets a positive integer `timeout-minutes`, at most `workflows.max_timeout_minutes` of `k.yaml` (#39). A job that calls a reusable workflow cannot set one, so the called workflow must be linted itself (local) or pinned by SHA.
 - `packages/k_workflows` reads the `workflows` section of `k.yaml` through `loadKConfig` and enforces these rules on `.github/workflows/*.yml|yaml` with a real YAML parse (`package:yaml`), so flow mappings, quoted keys and comments cannot hide a reference, a duplicated key is invalid YAML, and YAML merge keys (`<<`) are rejected anywhere. `tool/check.sh` runs it in the required `test` check.
 - `concurrency` uses `cancel-in-progress: true` for `test` and `k-config`. The gates (`review-gate`, `github-guard`) and `auto-merge` keep `cancel-in-progress: false` on purpose: a newer event must never cancel a run that removes a stale approval label.
 - `pubspec.lock` is committed, and every `dart pub get` in CI runs with `--enforce-lockfile`, so an out-of-sync lockfile fails the job.
