@@ -19,16 +19,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Detect Dart project
-        id: detect
-        run: |
-          if [ -f pubspec.yaml ]; then
-            echo "dart=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "dart=false" >> "$GITHUB_OUTPUT"
-          fi
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
-        if: steps.detect.outputs.dart == 'true'
         with:
           sdk: 3.13.5
       - name: Run tool/check.sh (single source of checks)

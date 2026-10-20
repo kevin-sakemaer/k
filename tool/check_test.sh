@@ -20,6 +20,8 @@ set -euo pipefail
 case "$1 ${2:-}" in
   "pub workspace")
     [ -z "${FAKE_WS_FAIL:-}" ] || { echo "workspace error" >&2; exit 1; }
+    [ -z "${FAKE_WS_EMPTY:-}" ] || exit 0
+    [ ! -f .fake_ws_json ] || { cat .fake_ws_json; exit 0; }
     root="$PWD"
     printf '{"packages":['
     sep=""
@@ -180,7 +182,25 @@ FAKE_GH_FAIL=1 CI_MODE=true expect "unknown issue state fails in CI" 1 \
 
 r="$(new_repo)"
 rm "$r/pubspec.yaml"
-expect "no pubspec.yaml skips Dart checks" 0 "SKIP: no pubspec.yaml" "$r"
+expect "no pubspec.yaml fails" 1 "pubspec.yaml is missing" "$r"
+
+r="$(new_repo)"
+: >"$r/.fake_ws"
+FAKE_WS_EMPTY=1 expect "empty workspace list output fails" 1 \
+  "could not read package paths" "$r"
+
+r="$(new_repo)"
+printf '{"packages":[]}' >"$r/.fake_ws_json"
+expect "workspace with no packages fails" 1 "could not read package paths" "$r"
+
+r="$(new_repo)"
+printf '.\n' >"$r/.fake_ws"
+expect "workspace listing only the root fails" 1 "only the root was listed" "$r"
+
+r="$(new_repo)"
+mkdir -p "$r/test"
+printf 'void main() {}\n' >"$r/test/root_test.dart"
+expect "root tests without lib/ run without coverage" 0 "dart test (workspace root, no lib/)" "$r"
 
 echo "$pass passed, $failed failed"
 [ "$failed" -eq 0 ]

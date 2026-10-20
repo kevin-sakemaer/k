@@ -41,7 +41,7 @@ tool/install_hooks.sh
 1. **One issue = one branch = one PR.** Never push directly to `main`.
 2. Open the PR referencing the issue (`Closes #N`).
 3. Required checks on `main`: **`test`** and **`review-gate`**.
-   - `test`: runs `tool/check.sh` (see Pre-commit checklist). It always runs the review-gate script tests; when `pubspec.yaml` exists it also runs format, analyze, the repository scripts, tests and coverage, and fails if there are no tests.
+   - `test`: runs `tool/check.sh` (see Pre-commit checklist). It always runs the review-gate script tests; it fails if `pubspec.yaml` is missing, then runs format, analyze, the repository scripts, tests and coverage, and fails if any workspace package has no tests or no member package is tested.
    - `review-gate`: fails without the `review:approved` label or when `review:changes-requested` is present.
 4. **Reviewer verdict**: a comment on the PR **and** a label, `review:approved` or `review:changes-requested`. Before re-approving, the Reviewer removes `review:changes-requested`.
 5. **Every push** to the PR automatically removes `review:approved`, and `review-gate` turns red on the new commit. Removing a label with the workflow token does not trigger a new run, so the check **stays red until the Reviewer adds `review:approved` again**.
