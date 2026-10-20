@@ -45,11 +45,16 @@ remove_approved() {
 main() {
   # Read current state from the API; the event payload may be stale.
   local head labels
-  head=$(api "repos/$REPO/pulls/$PR" --jq '[.head.sha, .head.repo.full_name, .head.ref] | @tsv')
-  IFS=$'\t' read -r HEAD_SHA HEAD_REPO HEAD_REF <<<"$head"
+  head=$(api "repos/$REPO/pulls/$PR" --jq '[.head.sha, .head.repo.full_name, .head.ref, (.draft | tostring)] | @tsv')
+  IFS=$'\t' read -r HEAD_SHA HEAD_REPO HEAD_REF DRAFT <<<"$head"
   [ -n "${HEAD_SHA:-}" ] && [ -n "${HEAD_REPO:-}" ] && [ -n "${HEAD_REF:-}" ] || fail "Could not read the PR head."
+  case "${DRAFT:-}" in
+    true | false) ;;
+    *) fail "Could not read the PR draft state." ;;
+  esac
   labels=$(api --paginate "repos/$REPO/issues/$PR/labels" --jq '.[].name')
   echo "Head: $HEAD_SHA ($HEAD_REPO:$HEAD_REF)"
+  echo "Draft: $DRAFT"
   echo "Labels: $(printf '%s' "$labels" | tr '\n' ' ')"
 
   has_label() { printf '%s\n' "$labels" | grep -qx "$1"; }
@@ -59,6 +64,11 @@ main() {
   if { [ "$ACTION" = "synchronize" ] || [ "$ACTION" = "reopened" ]; } && has_label 'review:approved'; then
     remove_approved
     fail "review:approved removed after a new push; a new review is required"
+  fi
+  # Draft-first rule (#27): a draft PR never passes, even with review:approved.
+  # The approval label is kept: marking the PR ready re-runs this gate.
+  if [ "$DRAFT" = true ]; then
+    fail "PR is a draft: mark it ready (gh pr ready) once CI is fully green; the review gate never passes on a draft PR"
   fi
   if has_label 'review:changes-requested'; then
     fail "Label review:changes-requested is present."
