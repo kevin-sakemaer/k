@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Freshness helpers shared by review_gate.sh and github_guard.sh (#8, #15).
 # Sourced, not executed. The caller defines fail() and api(), sets REPO and,
-# before head_push_time, HEAD_SHA, HEAD_REPO and HEAD_REF.
+# before head_push_time, HEAD_SHA, HEAD_REPO and HEAD_REF (and BASE_REF for
+# same_patch).
 #
 # Rule: a label approves the current head only if its latest "labeled" timeline
 # event is strictly newer than the server-side time the head SHA was pushed.
@@ -120,4 +121,130 @@ head_push_time() {
   else
     exit 1
   fi
+}
+
+# Same-patch rule (#52). With strict up-to-date checks every merge on main
+# makes approved PRs BEHIND, and the update push used to drop the approval
+# labels. A label still approves a new head when the PR patch is unchanged:
+# the approved SHA is the head when the label was added (latest activity entry
+# strictly before its latest "labeled" event; never the PR head), and the
+# patch-ids of git diff merge-base..SHA (merge-base with the base branch tip)
+# must match for both SHAs. Both git patch-id --stable and --verbatim must
+# match: --stable alone ignores whitespace, which can be meaningful (YAML).
+# Git objects are fetched into a throwaway bare repository; nothing from the
+# PR is checked out or run. Any error or doubt means "not the same patch".
+# Needs BASE_REF besides the freshness variables. GATE_GIT_URL is the remote
+# to fetch from (tests point it to a local repository).
+
+# Prints the approved SHA for a label added at $1, from the activity API.
+approved_sha_at() {
+  local entries sha ts best="" best_ts=""
+  if ! entries=$("$GH" api --paginate "repos/$HEAD_REPO/activity?ref=refs/heads/$HEAD_REF&per_page=100" \
+    --jq '.[] | "\(.after) \(.timestamp)"' 2>/dev/null); then
+    echo "Activity API failed: the approved SHA cannot be identified." >&2
+    return 1
+  fi
+  while read -r sha ts; do
+    [ -n "$sha" ] && [ -n "$ts" ] || continue
+    if [ "$ts" = "$1" ]; then
+      echo "A push has the same time as the label: ambiguous approved SHA." >&2
+      return 1
+    fi
+    if [[ "$ts" < "$1" ]] && { [ -z "$best_ts" ] || [[ "$ts" > "$best_ts" ]]; }; then
+      best="$sha" best_ts="$ts"
+    fi
+  done <<<"$entries"
+  if ! [[ "$best" =~ ^[0-9a-f]{40}$ ]] || [[ "$best" =~ ^0+$ ]]; then
+    echo "No push before the label: the approved SHA is unknown." >&2
+    return 1
+  fi
+  printf '%s' "$best"
+}
+
+# git on bare repository $1 only, whatever GIT_* variables the caller has
+# (a git hook sets GIT_DIR and GIT_INDEX_FILE).
+bare_git() {
+  local dir="$1"
+  shift
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
+    -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR -u GIT_NAMESPACE \
+    GIT_TERMINAL_PROMPT=0 git --git-dir="$dir" "$@"
+}
+
+# Prints "STABLE VERBATIM" patch-ids of merge-base..$2 in bare repository $1.
+patch_ids() {
+  local mb s v
+  mb=$(bare_git "$1" merge-base refs/k/base "$2") || return 1
+  bare_git "$1" diff --binary --full-index --no-renames --no-ext-diff \
+    --no-textconv --src-prefix=a/ --dst-prefix=b/ "$mb" "$2" >"$1/patch" || return 1
+  if ! [ -s "$1/patch" ]; then
+    echo "Empty diff for $2: no patch to compare." >&2
+    return 1
+  fi
+  s=$(bare_git "$1" patch-id --stable <"$1/patch" | awk '{print $1}') || return 1
+  v=$(bare_git "$1" patch-id --verbatim <"$1/patch" | awk '{print $1}') || return 1
+  [[ "$s" =~ ^[0-9a-f]{40}$ ]] && [[ "$v" =~ ^[0-9a-f]{40}$ ]] || return 1
+  printf '%s %s' "$s" "$v"
+}
+
+# same_patch LABEL TIMELINE: returns 0 only when the current head has the same
+# patch as the SHA approved by LABEL. Logs the decision and both patch-ids.
+# Sets APPROVED_SHA and PATCH_ID. Never exits.
+same_patch() {
+  local label="$1" at sha dir old="" new="" url
+  APPROVED_SHA="" PATCH_ID=""
+  at=$(label_added_at "$label" "$2")
+  if [ -z "$at" ]; then
+    echo "Same-patch check for $label: no labeled event, no approval record: drop."
+    return 1
+  fi
+  if ! [[ "${HEAD_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || [ -z "${BASE_REF:-}" ]; then
+    echo "Same-patch check for $label: head SHA or base branch unknown: drop."
+    return 1
+  fi
+  if ! sha=$(approved_sha_at "$at"); then
+    echo "Same-patch check for $label: approved SHA unknown: drop."
+    return 1
+  fi
+  APPROVED_SHA="$sha"
+  url="${GATE_GIT_URL:-https://github.com/$REPO.git}"
+  if dir=$(mktemp -d) && bare_git "$dir" init -q --bare &&
+    bare_git "$dir" fetch -q --no-tags "$url" "+refs/heads/$BASE_REF:refs/k/base" \
+      "$sha" "$HEAD_SHA" >&2; then
+    old=$(patch_ids "$dir" "$sha") || old=""
+    new=$(patch_ids "$dir" "$HEAD_SHA") || new=""
+  else
+    echo "Could not fetch $BASE_REF, $sha and $HEAD_SHA." >&2
+  fi
+  [ -n "${dir:-}" ] && rm -rf "$dir"
+  echo "Approved SHA for $label: $sha (label added at $at)"
+  echo "Patch-id (stable verbatim) at approved SHA: ${old:-error}"
+  echo "Patch-id (stable verbatim) at head $HEAD_SHA: ${new:-error}"
+  if [ -n "$old" ] && [ "$old" = "$new" ]; then
+    PATCH_ID="${new%% *}"
+    echo "Same-patch check for $label: same patch: keep."
+    return 0
+  fi
+  echo "Same-patch check for $label: patch differs or unknown: drop."
+  return 1
+}
+
+# keep_after_push LABEL: on synchronize, returns 0 when LABEL may stay, after
+# writing a bot marker comment that records the head as approved-by-rebase.
+# Any error returns 1, and the caller removes the label.
+keep_after_push() {
+  local timeline body
+  if ! timeline=$("$GH" api --paginate "repos/$REPO/issues/$PR/timeline?per_page=100" \
+    --jq '.[] | "\(.event) \(.label.name // "-") \(.created_at // "")"'); then
+    echo "Timeline API failed: drop $1." >&2
+    return 1
+  fi
+  same_patch "$1" "$timeline" || return 1
+  body="<!-- k-gate:approved-by-rebase label=$1 sha=$HEAD_SHA from=$APPROVED_SHA patch-id=$PATCH_ID -->
+\`$1\` kept: $HEAD_SHA has the same patch as the approved $APPROVED_SHA (patch-id $PATCH_ID)."
+  if ! "$GH" api -X POST "repos/$REPO/issues/$PR/comments" -f body="$body" >/dev/null; then
+    echo "Could not write the approved-by-rebase marker comment: drop $1." >&2
+    return 1
+  fi
+  echo "Marker comment written: $HEAD_SHA approved-by-rebase for $1."
 }

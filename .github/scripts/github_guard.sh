@@ -10,7 +10,8 @@
 # code the checkers run) unless the label ci:github-change-approved is set AND
 # fresh: its latest "labeled" event must be newer than the push of the current
 # head (same rule as review_gate.sh, shared in freshness.sh). Every push
-# (synchronize) or reopen removes that label. Fails closed on any doubt or API
+# (synchronize) or reopen removes that label, except a push with an unchanged
+# patch (same_patch in freshness.sh, #52). Fails closed on any doubt or API
 # error.
 #
 # Required environment: REPO (owner/name), PR (number), ACTION (event action).
@@ -86,8 +87,8 @@ remove_label() {
 main() {
   # Read current state from the API; the event payload may be stale.
   local head count labels files protected="" approved=0 listed=0 f prev
-  head=$(api "repos/$REPO/pulls/$PR" --jq '[.head.sha, .head.repo.full_name, .head.ref, .changed_files] | @tsv')
-  IFS=$'\t' read -r HEAD_SHA HEAD_REPO HEAD_REF count <<<"$head"
+  head=$(api "repos/$REPO/pulls/$PR" --jq '[.head.sha, .head.repo.full_name, .head.ref, .changed_files, .base.ref] | @tsv')
+  IFS=$'\t' read -r HEAD_SHA HEAD_REPO HEAD_REF count BASE_REF <<<"$head"
   [ -n "${HEAD_SHA:-}" ] && [ -n "${HEAD_REPO:-}" ] && [ -n "${HEAD_REF:-}" ] || fail "Could not read the PR head."
   [[ "${count:-}" =~ ^[0-9]+$ ]] || fail "Could not read the number of changed files."
   if [ "$count" -ge "$MAX_FILES" ]; then
@@ -97,10 +98,17 @@ main() {
   if printf '%s\n' "$labels" | grep -qxF "$LABEL"; then approved=1; fi
   echo "Head: $HEAD_SHA ($HEAD_REPO:$HEAD_REF)"
 
+  # On synchronize, the label stays only when the patch is unchanged (#52).
+  # Protected paths are still listed from the current diff below.
+  local kept=0
   if { [ "$ACTION" = "synchronize" ] || [ "$ACTION" = "reopened" ]; } && [ "$approved" = 1 ]; then
-    remove_label
-    approved=0
-    echo "$LABEL removed after a new push."
+    if [ "$ACTION" = "synchronize" ] && keep_after_push "$LABEL"; then
+      kept=1
+    else
+      remove_label
+      approved=0
+      echo "$LABEL removed after a new push."
+    fi
   fi
 
   # One line per file: new name, tab, previous name of a rename (or empty).
@@ -137,6 +145,10 @@ main() {
   echo "$LABEL added at: ${label_at:-none}"
   echo "Head pushed at: ${HEAD_AT:-unknown} (source: $HEAD_AT_SOURCE)"
   if ! is_newer "$label_at" "$HEAD_AT"; then
+    if [ "$kept" = 1 ] || same_patch "$LABEL" "$timeline"; then
+      echo "Approved by label $LABEL (same patch as the approved SHA)."
+      return 0
+    fi
     remove_label
     fail "$LABEL predates the latest push; the Reviewer must add it again."
   fi
