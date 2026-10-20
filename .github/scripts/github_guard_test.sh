@@ -141,6 +141,13 @@ done
 new_case "renaming away a nested dart_test.yaml without label fails" opened "packages/k_core/old.yaml:packages/k_core/dart_test.yaml"
 check 1 "  packages/k_core/dart_test.yaml"
 
+new_case "renaming to a nested dart_test.yaml without label fails" opened "packages/x/dart_test.yaml:foo.yaml"
+check 1 "  packages/x/dart_test.yaml"
+
+# GitHub lists a deleted file under its own name, like a modified one.
+new_case "deleting a nested dart_test.yaml without label fails" opened "packages/x/dart_test.yaml"
+check 1 "  packages/x/dart_test.yaml"
+
 new_case "nested dart_test.yaml with fresh label passes" labeled "packages/k_core/dart_test.yaml" "$L"
 fresh
 check 0 "Approved by label" kept

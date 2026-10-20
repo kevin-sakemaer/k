@@ -3,11 +3,11 @@
 # (the gate itself: .github/, tool/check.sh, tool/*_test.sh, tool/hooks/,
 # analysis_options.yaml, k.yaml and dart_test.yaml at any depth, since the
 # analyzer uses the nearest analysis_options.yaml and dart_test.yaml can
-# silently skip or exclude tests, #22) unless the label ci:github-change-approved is
-# set AND fresh: its latest "labeled" event must be newer than the push of the
-# current head (same rule as review_gate.sh, shared in freshness.sh). Every
-# push (synchronize) or reopen removes that label. Fails closed on any doubt or
-# API error.
+# silently skip or exclude tests, #22) unless the label
+# ci:github-change-approved is set AND fresh: its latest "labeled" event must be
+# newer than the push of the current head (same rule as review_gate.sh, shared
+# in freshness.sh). Every push (synchronize) or reopen removes that label. Fails
+# closed on any doubt or API error.
 #
 # Required environment: REPO (owner/name), PR (number), ACTION (event action).
 # GH can point to another gh binary; tests put a fake gh first in PATH.
