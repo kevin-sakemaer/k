@@ -5,12 +5,11 @@
 # analyzer uses the nearest analysis_options.yaml and dart_test.yaml can
 # silently skip or exclude tests, #22; and every checker package listed in
 # CHECKER_PACKAGES, since tool/check.sh runs them from the PR head, #31; and
-# the root pubspec.yaml, and pubspec.lock and pubspec_overrides.yaml at any
-# depth, since dependency_overrides there decide what code the checkers run)
-# unless the label
-# ci:github-change-approved is set AND fresh: its latest "labeled" event must be
-# newer than the push of the current head (same rule as review_gate.sh, shared
-# in freshness.sh). Every push (synchronize) or reopen removes that label. Fails
+# pubspec.yaml, pubspec.lock and pubspec_overrides.yaml at any depth, since
+# dependency_overrides in any of them, even in a workspace member, decide what
+# code the checkers run) unless the label ci:github-change-approved is set AND
+# fresh: its latest "labeled" event must be newer than the push of the current
+# head (same rule as review_gate.sh, shared in freshness.sh). Every push (synchronize) or reopen removes that label. Fails
 # closed on any doubt or API error.
 #
 # Required environment: REPO (owner/name), PR (number), ACTION (event action).
@@ -60,7 +59,7 @@ api() {
 
 is_protected() {
   case "$1" in
-    .github/* | tool/check.sh | tool/*_test.sh | tool/hooks/* | analysis_options.yaml | */analysis_options.yaml | k.yaml | */k.yaml | dart_test.yaml | */dart_test.yaml | pubspec.yaml | pubspec.lock | */pubspec.lock | pubspec_overrides.yaml | */pubspec_overrides.yaml) return 0 ;;
+    .github/* | tool/check.sh | tool/*_test.sh | tool/hooks/* | analysis_options.yaml | */analysis_options.yaml | k.yaml | */k.yaml | dart_test.yaml | */dart_test.yaml | pubspec.yaml | */pubspec.yaml | pubspec.lock | */pubspec.lock | pubspec_overrides.yaml | */pubspec_overrides.yaml) return 0 ;;
   esac
   local pkg
   for pkg in "${CHECKER_PACKAGES[@]}"; do
