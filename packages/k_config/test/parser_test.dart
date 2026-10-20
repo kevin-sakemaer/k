@@ -67,8 +67,13 @@ comments: {exceptions: []}
       expect(parse(source), isA<KConfigValid>());
     });
 
-    test('accepts a decimal threshold', () {
-      expect(parse(edit('default: 100', 'default: 99.5')), isA<KConfigValid>());
+    test('accepts the bounds 0 and 100', () {
+      final String source = edit(
+        'default: 100',
+        'default: 0',
+      ).replaceFirst('threshold: 95', 'threshold: 0');
+      expect(parse(source), isA<KConfigInvalid>());
+      expect(parse(edit('threshold: 95', 'threshold: 0')), isA<KConfigValid>());
     });
 
     final failures = <String, (String, List<String>)>{
@@ -172,26 +177,149 @@ comments: {exceptions: []}
             'comments: {exceptions: []}\n',
         ['k.yaml: coverage.overrides: missing required key.'],
       ),
-      'a threshold of the wrong type': (
+      'a quoted threshold': (
         edit('default: 100', 'default: "100"'),
-        ['k.yaml: coverage.default: must be a number between 0 and 100.'],
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found "100".',
+          ),
+        ],
       ),
       'a threshold above 100': (
         edit('threshold: 95', 'threshold: 101'),
         [
           message(
             'k.yaml: coverage.overrides.alpha.threshold: '
-            'must be between 0 and 100, found 101.',
+            'must be an integer from 0 to 100, found 101.',
           ),
         ],
       ),
       'a negative threshold': (
         edit('default: 100', 'default: -1'),
-        ['k.yaml: coverage.default: must be between 0 and 100, found -1.'],
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found -1.',
+          ),
+        ],
       ),
       'a NaN threshold': (
         edit('default: 100', 'default: .nan'),
-        ['k.yaml: coverage.default: must be between 0 and 100, found NaN.'],
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found .nan.',
+          ),
+        ],
+      ),
+      'a decimal threshold': (
+        edit('default: 100', 'default: 100.0'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found 100.0.',
+          ),
+        ],
+      ),
+      'a fractional override threshold': (
+        edit('threshold: 95', 'threshold: 99.5'),
+        [
+          message(
+            'k.yaml: coverage.overrides.alpha.threshold: '
+            'must be an integer from 0 to 100, found 99.5.',
+          ),
+        ],
+      ),
+      'a threshold in scientific notation': (
+        edit('default: 100', 'default: 1e2'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found 1e2.',
+          ),
+        ],
+      ),
+      'a hexadecimal threshold': (
+        edit('default: 100', 'default: 0x64'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found 0x64.',
+          ),
+        ],
+      ),
+      'an octal threshold': (
+        edit('default: 100', 'default: 0o144'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found 0o144.',
+          ),
+        ],
+      ),
+      'a threshold with a plus sign': (
+        edit('default: 100', 'default: +100'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found +100.',
+          ),
+        ],
+      ),
+      'a threshold with a separator': (
+        edit('default: 100', 'default: 1_00'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found 1_00.',
+          ),
+        ],
+      ),
+      'a threshold with a leading zero': (
+        edit('threshold: 95', 'threshold: 095'),
+        [
+          message(
+            'k.yaml: coverage.overrides.alpha.threshold: '
+            'must be an integer from 0 to 100, found 095.',
+          ),
+        ],
+      ),
+      'a boolean threshold': (
+        edit('default: 100', 'default: true'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found true.',
+          ),
+        ],
+      ),
+      'an empty threshold': (
+        edit('default: 100', 'default:'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found null.',
+          ),
+        ],
+      ),
+      'a null threshold': (
+        edit('default: 100', 'default: null'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found null.',
+          ),
+        ],
+      ),
+      'an infinite threshold': (
+        edit('default: 100', 'default: .inf'),
+        [
+          message(
+            'k.yaml: coverage.default: '
+            'must be an integer from 0 to 100, found .inf.',
+          ),
+        ],
       ),
       'an override for an unknown package': (
         edit('    alpha:\n      threshold', '    gamma:\n      threshold'),

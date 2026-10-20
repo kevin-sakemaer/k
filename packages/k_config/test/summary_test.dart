@@ -10,7 +10,7 @@ void main() {
           toolVersion: '1.16.0',
           overrides: {
             'alpha': CoverageOverride(
-              threshold: 95.5,
+              threshold: 95,
               reason: 'Pipes | and\n  new lines are escaped.',
             ),
           },
@@ -43,7 +43,7 @@ Coverage tool: package:coverage 1.16.0.
 
 | Package | Threshold | Reason |
 | --- | --- | --- |
-| alpha | 95.5% | Pipes \| and new lines are escaped. |
+| alpha | 95% | Pipes \| and new lines are escaped. |
 
 ### Dependencies
 

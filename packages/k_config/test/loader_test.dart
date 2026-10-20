@@ -58,7 +58,8 @@ void main() {
             (exception) => exception.toString(),
             'toString',
             'KConfigException:\n'
-                'k.yaml: coverage.default: must be a number between 0 and 100.',
+                'k.yaml: coverage.default: must be an integer from 0 to 100, '
+                'found "high".',
           ),
         ),
       );

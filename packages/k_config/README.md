@@ -29,11 +29,11 @@ Other checks read the typed values with `loadKConfig(Directory root)`.
 
 ```yaml
 coverage:
-  default: 100              # Line coverage threshold in percent, 0 to 100.
+  default: 100              # Integer from 0 to 100, line coverage in percent.
   tool_version: 1.16.0      # Exact package:coverage version, MAJOR.MINOR.PATCH.
   overrides:                # Required, may be {}.
     some_package:           # Must be a workspace package.
-      threshold: 95         # 0 to 100.
+      threshold: 95         # Integer from 0 to 100, lower than coverage.default.
       reason: "Why this package cannot reach the default."
 dependencies:
   exceptions:               # Required, may be {}.
@@ -55,7 +55,7 @@ Validation fails on:
 - an unknown key, or a missing key, at any level;
 - a duplicated key, including a duplicated section;
 - a value of the wrong type;
-- a threshold outside 0 to 100;
+- a threshold that is not a plain decimal integer from 0 to 100 (no decimal, exponent, hexadecimal, octal, sign, separator, leading zero, string or boolean);
 - a `coverage.tool_version` that is not an exact `MAJOR.MINOR.PATCH` string;
 - a missing or blank `reason`;
 - a coverage override for a package that is not in the workspace, or whose

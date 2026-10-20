@@ -34,14 +34,14 @@ final class CoverageConfig {
   final String toolVersion;
 
   /// Line coverage threshold, in percent, of every package without override.
-  final num defaultThreshold;
+  final int defaultThreshold;
 
   /// Justified thresholds, keyed by workspace package name.
   final Map<String, CoverageOverride> overrides;
 
   /// Returns the line coverage threshold, in percent, that applies to
   /// [package].
-  num thresholdFor(String package) =>
+  int thresholdFor(String package) =>
       overrides[package]?.threshold ?? defaultThreshold;
 }
 
@@ -51,7 +51,7 @@ final class CoverageOverride {
   const new({required this.threshold, required this.reason});
 
   /// Line coverage threshold, in percent.
-  final num threshold;
+  final int threshold;
 
   /// Why the package cannot reach the default threshold.
   final String reason;

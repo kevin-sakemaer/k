@@ -66,6 +66,10 @@ final class _Validator {
   /// Every error found so far; the source is valid only if it stays empty.
   final List<String> errors = [];
 
+  /// Source text of every scalar value read so far, keyed by dotted path, so
+  /// that a value can be checked as written and not only as parsed.
+  final Map<String, String> sourceText = {};
+
   void error(String path, String message) =>
       errors.add('k.yaml: ${path.isEmpty ? '(root)' : path}: $message');
 
@@ -118,7 +122,7 @@ final class _Validator {
     if (map == null) {
       return null;
     }
-    final num? defaultThreshold = field(map, path, 'default', threshold);
+    final int? defaultThreshold = field(map, path, 'default', threshold);
     final Map<String, CoverageOverride>? overrides = field(
       map,
       path,
@@ -177,7 +181,7 @@ final class _Validator {
     if (map == null) {
       return null;
     }
-    final num? packageThreshold = field(map, path, 'threshold', threshold);
+    final int? packageThreshold = field(map, path, 'threshold', threshold);
     final String? packageReason = field(map, path, 'reason', reason);
     if (packageThreshold == null || packageReason == null) {
       return null;
@@ -300,13 +304,15 @@ final class _Validator {
     return value;
   }
 
-  num? threshold(Object? value, String path) {
-    if (value is! num) {
-      error(path, 'must be a number between 0 and 100.');
-      return null;
-    }
-    if (!(value >= 0 && value <= 100)) {
-      error(path, 'must be between 0 and 100, found $value.');
+  /// A plain decimal integer, without sign, leading zero, separator, base
+  /// prefix, exponent or fraction.
+  static final RegExp _decimalInteger = RegExp(r'^(0|[1-9][0-9]*)$');
+
+  int? threshold(Object? value, String path) {
+    final String? source = sourceText[path];
+    final String text = source == null || source.isEmpty ? '$value' : source;
+    if (value is! int || !_decimalInteger.hasMatch(text) || value > 100) {
+      error(path, 'must be an integer from 0 to 100, found $text.');
       return null;
     }
     return value;
@@ -375,12 +381,16 @@ final class _Validator {
     }
     final map = <String, Object?>{};
     var valid = true;
-    for (final MapEntry(:key, :value) in value.entries) {
+    for (final MapEntry(:key, value: entry) in value.entries) {
       if (key is! String) {
         valid = false;
         error(path, 'key "$key" must be a string.');
       } else {
-        map[key] = value;
+        map[key] = entry;
+        final Object? node = value is YamlMap ? value.nodes[key] : null;
+        if (node is YamlScalar) {
+          sourceText[_join(path, key)] = node.span.text;
+        }
       }
     }
     return valid ? map : null;

@@ -80,11 +80,11 @@ tool/install_hooks.sh
 
 ```yaml
 coverage:
-  default: 100              # Line coverage threshold in percent, 0 to 100.
+  default: 100              # Integer from 0 to 100, line coverage in percent.
   tool_version: 1.16.0      # Exact package:coverage version, MAJOR.MINOR.PATCH.
   overrides:                # Required, may be {}.
     some_package:           # Must be a workspace package.
-      threshold: 95         # Strictly lower than coverage.default.
+      threshold: 95         # Integer from 0 to 100, lower than coverage.default.
       reason: "Why this package cannot reach the default."
 dependencies:
   exceptions:               # Required, may be {}.
@@ -101,7 +101,7 @@ comments:
 - `dependencies`: the publishers `dart.dev`, `tools.dart.dev` and `labs.dart.dev` are fixed in `k_config` and cannot be changed from `k.yaml` (an `allowed_publishers` key fails as an unknown key). Any other direct dependency needs an entry in `exceptions`.
 - `comments`: files allowed to contain non-documentation comments.
 
-Validation fails on an unknown or missing key at any level, a duplicated key, a wrong type, a threshold outside 0 to 100, a `tool_version` that is not an exact `MAJOR.MINOR.PATCH` string, a coverage override not strictly lower than `coverage.default` or for a package outside the workspace, a missing or blank `reason` (or `approved_by`), a dependency exception for a package that is not a direct dependency, and a comment exception for a missing or duplicated file.
+Validation fails on an unknown or missing key at any level, a duplicated key, a wrong type, a threshold that is not a plain decimal integer from 0 to 100 (no decimal, exponent, hexadecimal, octal, sign, separator, leading zero, string or boolean), a `tool_version` that is not an exact `MAJOR.MINOR.PATCH` string, a coverage override not strictly lower than `coverage.default` or for a package outside the workspace, a missing or blank `reason` (or `approved_by`), a dependency exception for a package that is not a direct dependency, and a comment exception for a missing or duplicated file.
 
 ### Adding an exception
 1. Get Kevin's approval first: **every exception requires Kevin's agreement** (through Grok Bot).

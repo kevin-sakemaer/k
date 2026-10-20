@@ -72,7 +72,9 @@ void main() {
       expect(
         err.toString(),
         allOf(
-          contains('k.yaml: coverage.default: must be between 0 and 100'),
+          contains(
+            'k.yaml: coverage.default: must be an integer from 0 to 100',
+          ),
           contains('k.yaml: coverage.overrides.gamma: unknown package.'),
           endsWith('k.yaml is invalid: 2 error(s).\n'),
         ),
