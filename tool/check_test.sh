@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests of tool/check.sh with fake `dart` and `gh` commands (issue #16).
+# Tests of tool/check.sh with a fake `dart` command (issue #16).
 # Plain bash, no Dart SDK required.
 set -euo pipefail
 
@@ -70,12 +70,7 @@ case "$1 ${2:-}" in
   *) ;;
 esac
 FAKE
-cat >"$bin/gh" <<'FAKE'
-#!/usr/bin/env bash
-[ -z "${FAKE_GH_FAIL:-}" ] || exit 1
-echo "${FAKE_GH_STATE:-OPEN}"
-FAKE
-chmod +x "$bin/dart" "$bin/gh"
+chmod +x "$bin/dart"
 
 # add_pkg_script <repo> <name>: adds packages/<name>/bin/<name>.dart.
 add_pkg_script() {
@@ -313,23 +308,13 @@ r="$(new_repo)"
 printf '/// Library.\nlibrary;\n\nexport "a.dart"\n    show one;\n' >"$r/packages/a/lib/all.dart"
 expect "export-only lib file is not counted" 0 "All checks passed." "$r"
 
-# The publishers check (#4) is required: a missing checker fails whatever
-# the state of issue #4 or of gh (these cases used to be skips).
+# The publishers check (#4) is required: a missing checker fails.
 nopub="packages/k_publishers/bin/k_publishers.dart not found: the dependency publishers check is required"
 r="$(new_repo)"; rm -r "$r/packages/k_publishers"
 CI_MODE=true expect "missing publishers checker fails in CI" 1 "::error::$nopub" "$r"
 
 r="$(new_repo)"; rm -r "$r/packages/k_publishers"
-expect "missing publishers checker fails while #4 is open" 1 "$nopub" "$r"
-
-r="$(new_repo)"; rm -r "$r/packages/k_publishers"
-FAKE_GH_STATE=CLOSED expect "missing publishers checker fails once #4 is closed" 1 "$nopub" "$r"
-
-r="$(new_repo)"; rm -r "$r/packages/k_publishers"
-FAKE_GH_FAIL=1 expect "missing publishers checker fails locally without gh" 1 "$nopub" "$r"
-
-r="$(new_repo)"; rm -r "$r/packages/k_publishers"
-FAKE_GH_FAIL=1 CI_MODE=true expect "missing publishers checker fails in CI without gh" 1 "$nopub" "$r"
+expect "missing publishers checker fails" 1 "$nopub" "$r"
 
 # Repository script locations and invocation.
 r="$(new_repo)"
@@ -341,7 +326,7 @@ fi
 r="$(new_repo)"
 add_pkg_script "$r" k_config
 add_pkg_script "$r" k_publishers
-FAKE_GH_STATE=CLOSED expect "every script present: closed issues pass" 0 "All checks passed." "$r"
+expect "every script present passes" 0 "All checks passed." "$r"
 if ! ran "$r" "dart run k_config" || ! ran "$r" "dart run k_publishers"; then
   echo "FAIL - every script present (k_config or k_publishers not run by name)"; failed=$((failed + 1))
 fi
