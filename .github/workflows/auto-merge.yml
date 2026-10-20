@@ -1,15 +1,17 @@
 name: auto-merge
 
-# Enables squash auto-merge on every PR. pull_request_target runs in the
+# Enables squash auto-merge on PRs to main. pull_request_target runs in the
 # context of the base branch; the PR head is never checked out.
 # The `labeled` trigger (review:approved only) re-enables auto-merge on PRs
 # opened before this workflow or where auto-merge was disabled. Running
 # `gh pr merge --auto` again is harmless.
 # Only PRs whose base is main (#33): the main ruleset protects only main, so
-# auto-merge on any other base would merge with no review.
+# auto-merge on any other base would merge with no review. The job runs on
+# every base; auto_merge.sh enables on main and disables auto-merge on any
+# other base. `edited` catches a base change after auto-merge was enabled.
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review, labeled]
+    types: [opened, reopened, ready_for_review, labeled, edited]
 
 permissions: {}
 
@@ -19,7 +21,7 @@ concurrency:
 
 jobs:
   auto-merge:
-    if: ${{ github.event.pull_request.base.ref == 'main' && !github.event.pull_request.draft && (github.event.action != 'labeled' || github.event.label.name == 'review:approved') }}
+    if: ${{ github.event.action != 'labeled' || github.event.label.name == 'review:approved' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -32,11 +34,14 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
           sparse-checkout: .github/scripts
-      - name: Enable auto-merge (squash)
+      - name: Enable or disable auto-merge
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           BASE: ${{ github.event.pull_request.base.ref }}
+          ACTION: ${{ github.event.action }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          LABEL: ${{ github.event.label.name }}
         run: bash .github/scripts/auto_merge.sh
