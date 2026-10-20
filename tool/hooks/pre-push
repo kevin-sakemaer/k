@@ -1,15 +1,37 @@
 #!/usr/bin/env bash
-# Checklist point 1 plus the full points 2 to 5 (issue #16).
+# Checklist point 1 plus the full points 2 to 5 (issue #16), run on each
+# pushed commit in a clean temporary worktree, so uncommitted changes and
+# the currently checked-out branch do not affect the result.
 set -euo pipefail
-root="$(git rev-parse --show-toplevel)"
 remote="${1:-origin}"
+zero="0000000000000000000000000000000000000000"
 
-echo "==> branch contains up-to-date ${remote}/main"
+echo "==> fetching ${remote}/main"
 git fetch --quiet "$remote" main \
   || { echo "FAIL: could not fetch ${remote}/main" >&2; exit 1; }
-if ! git merge-base --is-ancestor "${remote}/main" HEAD; then
-  echo "FAIL: HEAD does not contain ${remote}/main; rebase or merge it first." >&2
-  exit 1
-fi
 
-exec bash "$root/tool/check.sh"
+checked=" "
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -n "${local_sha:-}" ] || continue
+  if [ "$local_sha" = "$zero" ]; then
+    continue
+  fi
+  case "$checked" in *" $local_sha "*) continue ;; esac
+  checked="$checked$local_sha "
+
+  echo "==> ${local_ref} (${local_sha}) -> ${remote_ref}"
+  if ! git merge-base --is-ancestor "${remote}/main" "$local_sha"; then
+    echo "FAIL: ${local_ref} does not contain ${remote}/main; merge or rebase it first." >&2
+    exit 1
+  fi
+
+  tree="$(mktemp -d)"
+  git worktree add --quiet --detach "$tree" "$local_sha"
+  status=0
+  bash "$tree/tool/check.sh" || status=$?
+  git worktree remove --force "$tree"
+  if [ "$status" -ne 0 ]; then
+    echo "FAIL: tool/check.sh failed on ${local_sha}" >&2
+    exit "$status"
+  fi
+done

@@ -22,15 +22,19 @@ Mandatory before every commit and push (#16). The Reviewer may reject without de
 5. Same scripts as CI run locally (k_config, publishers check, comments check).
 6. Self-review of `git diff origin/main` against the issue acceptance criteria and Reviewer rules: English only, `///` comments only, no hard-coded values outside k.yaml.
 
-Points 2 to 5 live in a single script, `tool/check.sh`, which the `test` CI job also runs. Install the hooks once per clone:
+Points 2 to 5 live in a single script, `tool/check.sh`, which the `test` CI job also runs; `tool/check_test.sh` tests it. Install the hooks once per clone:
 
 ```bash
 tool/install_hooks.sh
 ```
 
+- The install script refuses to replace an existing `core.hooksPath` or local `.git/hooks` scripts unless `--force` is given.
 - `pre-commit` runs `tool/check.sh --fast` (points 2, 3 and 5; tests and coverage are left to `pre-push`).
-- `pre-push` fetches `origin/main`, checks it is an ancestor of `HEAD` (point 1), then runs the full `tool/check.sh` (points 2 to 5).
-- Checks whose script is not on `main` yet (k_config #13, publishers #4, comments #9, coverage threshold from `k.yaml` #13) are skipped with an explicit message.
+- `pre-push` fetches `origin/main`, then for each pushed commit checks that it contains `origin/main` (point 1) and runs the full `tool/check.sh` in a clean temporary worktree of that commit (points 2 to 5).
+- Packages come from `dart pub workspace list --json`. Every package must have `test/**/*_test.dart`; the workspace root is skipped only when it has no `lib/`.
+- Coverage threshold: `coverage.default` in `k.yaml`, a YAML integer from 0 to 100. If `k.yaml` or `coverage.default` is missing, the threshold defaults to **100%** and the check still fails (`k.yaml with coverage.default is required; defaulting to 100%`). Coverage is never disabled.
+- Coverage counts every `lib/**/*.dart` file: a file that no test loads counts as 0%.
+- Checks whose script is not on `main` yet (k_config #13, publishers #4, comments #9) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
 - Point 6 stays manual.
 
 ## Workflow
