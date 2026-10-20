@@ -77,7 +77,7 @@ tool/install_hooks.sh
   - `owner/repo[/path]@<40-character commit SHA>` with exactly one `@`, followed on its line by the version in a comment (`# vX.Y.Z`); quoting the value is fine;
   - a local action (`./...`);
   - a Docker image pinned by digest (`docker://image@sha256:<64 hex>`).
-- Path segments are never empty, `.` or `..` (no `a/b/x/@sha`, `a/b/../c@sha`, `./a//b`). A job-level `uses:` (reusable workflow call) is either `./.github/workflows/<file>`, one of the linted workflows, or a SHA-pinned remote workflow; never a Docker image.
+- Path segments are never empty, `.` or `..` (no `a/b/x/@sha`, `a/b/../c@sha`, `./a//b`). A job-level `uses:` (reusable workflow call) is either `./.github/workflows/<file>.yml` (or `.yaml`), one of the linted workflows, or `owner/repo/.github/workflows/<file>.yml@<40 hex>` (or `.yaml`) with its `# vX.Y.Z` comment (#45). Anything else fails: `owner/repo@<sha>` without the workflow path, another path, a Docker image, `..`, `.` or empty segments, a trailing slash.
 - Every job `container` image (string or `image:` key) and every `services.<id>.image` is pinned by digest (`image@sha256:<64 hex>`).
 - Every workflow sets exactly `permissions: {}` at the top level.
 - Job `permissions`, when set, is a mapping of explicit GitHub scopes (`contents`, `pull-requests`, ...) to `read`, `write` or `none`. A shorthand such as `write-all` or `read-all` and an unknown scope are rejected. Each job grants only the scopes it uses.

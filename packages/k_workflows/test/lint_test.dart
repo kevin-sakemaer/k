@@ -147,10 +147,10 @@ void main() {
           '  ok:\n'
           '    uses: org/repo/.github/workflows/w.yml@$sha # v1\n';
       const expected =
-          "w.yml: job 'call': "
+          "w.yml: job 'call': reusable workflow "
           '"org/repo/.github/workflows/w.yml@main" must be '
-          'owner/repo[/path]@<full 40-character commit SHA>, '
-          'with exactly one @.';
+          'owner/repo/.github/workflows/<file>.yml (or .yaml) pinned as '
+          '@<full 40-character commit SHA>.';
       expect(lint(source), [expected]);
     });
   });
@@ -224,21 +224,72 @@ void main() {
         './.github/workflows/missing.yml',
         './.github/actions/x',
         './.github/workflows/../workflows/called.yml',
+        './.github/workflows/called.json',
+        './.github/workflows//called.yml',
+        './.github/workflows/called.yml/',
       ]) {
         expect(
           lintWorkflows({
             '.github/workflows/caller.yml': caller(uses),
             '.github/workflows/called.yml': called,
+            '.github/workflows/called.json': called,
           }, noWrites),
-          [contains('must be one of the linted workflows')],
+          [contains('must be ./.github/workflows/<file>.yml')],
           reason: uses,
         );
       }
     });
 
+    test('a pinned remote .yml or .yaml workflow passes', () {
+      for (final file in <String>['w.yml', 'w.yaml']) {
+        expect(
+          lint(caller('o/r/.github/workflows/$file@$sha # v1')),
+          isEmpty,
+          reason: file,
+        );
+      }
+    });
+
+    test('a pinned remote workflow without a version comment fails', () {
+      expect(lint(caller('o/r/.github/workflows/w.yml@$sha')), [
+        contains('must be followed by its version in a comment'),
+      ]);
+    });
+
+    test('every other remote form fails (#45)', () {
+      for (final uses in <String>[
+        'o/r@$sha',
+        'o/r/w.yml@$sha',
+        'o/r/.github/actions/w.yml@$sha',
+        'o/r/.github/workflows/w.json@$sha',
+        'o/r/.github/workflows/sub/w.yml@$sha',
+        'o/r/.github/workflows/@$sha',
+        'o/r/.github/workflows/w.yml/@$sha',
+        'o/r/.github//workflows/w.yml@$sha',
+        'o/r/.github/workflows/../w.yml@$sha',
+        'o/../.github/workflows/w.yml@$sha',
+        '../r/.github/workflows/w.yml@$sha',
+        'o/r/.github/workflows/w.yml@main',
+        'o/r/.github/workflows/w.yml@$sha@$sha',
+        '/r/.github/workflows/w.yml@$sha',
+        'o/r/.github/workflows/w.yml@${sha.toUpperCase()}',
+        'o/r/.github/workflows/w.yml@${sha.substring(1)}',
+        'o/r/.github/workflows/w.yml@${sha}0',
+        'o/r/.github/workflows/w.YML@$sha',
+      ]) {
+        expect(lint(caller('"$uses" # v1')), [
+          contains('must be owner/repo/.github/workflows/'),
+        ], reason: uses);
+      }
+    });
+
+    test('a non-string job-level uses fails', () {
+      expect(lint(caller('[a]')), [contains('uses must be a string.')]);
+    });
+
     test('a docker reference cannot be called as a workflow', () {
       expect(lint(caller('docker://alpine@sha256:${'a' * 64}')), [
-        contains('a job-level uses: must call a workflow'),
+        contains('must be owner/repo/.github/workflows/'),
       ]);
     });
   });
