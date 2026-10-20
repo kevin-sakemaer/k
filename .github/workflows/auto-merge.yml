@@ -5,6 +5,8 @@ name: auto-merge
 # The `labeled` trigger (review:approved only) re-enables auto-merge on PRs
 # opened before this workflow or where auto-merge was disabled. Running
 # `gh pr merge --auto` again is harmless.
+# Only PRs whose base is main (#33): the main ruleset protects only main, so
+# auto-merge on any other base would merge with no review.
 on:
   pull_request_target:
     types: [opened, reopened, ready_for_review, labeled]
@@ -17,17 +19,24 @@ concurrency:
 
 jobs:
   auto-merge:
-    if: ${{ !github.event.pull_request.draft && (github.event.action != 'labeled' || github.event.label.name == 'review:approved') }}
+    if: ${{ github.event.pull_request.base.ref == 'main' && !github.event.pull_request.draft && (github.event.action != 'labeled' || github.event.label.name == 'review:approved') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
       pull-requests: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Base-branch tip under pull_request_target, never the PR head.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
       - name: Enable auto-merge (squash)
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-        run: gh pr merge "$PR" --auto --squash
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: bash .github/scripts/auto_merge.sh
