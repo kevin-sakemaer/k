@@ -37,8 +37,8 @@ workflows:
     - workflow: github-guard.yml
       job: github-guard
       scope: pull-requests
-      reason: "Removes the stale ci:github-change-approved label from the pull request."
+      reason: "Removes the stale ci:github-change-approved label and posts the approved-by-rebase marker comment (#52) on the pull request."
     - workflow: review-gate.yml
       job: review-gate
       scope: pull-requests
-      reason: "Removes the stale review:approved label from the pull request."
+      reason: "Removes the stale review:approved label and posts the approved-by-rebase marker comment (#52) on the pull request."

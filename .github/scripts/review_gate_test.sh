@@ -21,13 +21,14 @@ while [ $# -gt 0 ]; do
     -X) method="$2"; shift 2 ;;
     -i | --include) include=1; shift ;;
     --paginate) shift ;;
-    --jq) shift 2 ;;
+    --jq | -f) shift 2 ;;
     *) endpoint="$1"; shift ;;
   esac
 done
 case "$endpoint" in
   */pulls/*) key=pulls ;;
   */labels/*) key=delete ;;
+  */issues/*/comments) key=comments ;;
   */labels) key=labels ;;
   */timeline*) key=timeline ;;
   */activity*) key=activity ;;
@@ -50,6 +51,82 @@ if [ "$include" = 0 ] && [ -f "$MOCK/$key.out" ]; then cat "$MOCK/$key.out"; fi
 MOCK
 chmod +x "$WORK/bin/gh"
 
+# Same-patch fixture (#52): a local origin repository with real commits.
+# main: C0 then C1 (unrelated). V1 is the approved head, branched from C0.
+# V2 rebases V1 onto C1 (same patch). V3 resolves a conflict differently
+# (changed patch). V4 only changes whitespace. V5A and V5B are V1 and V2
+# with different binary contents.
+# VM is V2 with lib/x.txt made executable. VSA adds lib/s as a file
+# and VSB (rebased) as a symlink with the same content.
+# E0 and E1 have an empty diff from main. VP adds a protected file.
+make_origin() {
+  local o="$WORK/origin"
+  # A git hook sets GIT_DIR and GIT_INDEX_FILE: never touch that repository.
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR
+  unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_AUTHOR_DATE='2026-01-01T00:00:00Z'
+  export GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com GIT_COMMITTER_DATE='2026-01-01T00:00:00Z'
+  git init -q -b main "$o"
+  git -C "$o" config uploadpack.allowAnySHA1InWant true
+  mkdir -p "$o/.github" "$o/lib"
+  printf 'a: 1\n' >"$o/.github/w.yml"
+  printf 'one\ntwo\n' >"$o/lib/x.txt"
+  printf '\000\001a' >"$o/lib/b.bin"
+  printf 'base\n' >"$o/README.md"
+  git -C "$o" add -A && git -C "$o" commit -qm c0
+  local c0; c0=$(git -C "$o" rev-parse HEAD)
+  E0=$c0
+  git -C "$o" checkout -q -b v1
+  printf 'one\ntwo\nthree\n' >"$o/lib/x.txt"
+  printf 'a: 1\nb:\n  c: 2\n' >"$o/.github/w.yml"
+  git -C "$o" commit -qam v1
+  V1=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q main
+  printf 'base\nmore\n' >"$o/README.md"
+  git -C "$o" commit -qam c1
+  E1=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v2
+  git -C "$o" cherry-pick "$V1" >/dev/null
+  V2=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v3 main
+  printf 'one\ntwo\nTHREE\n' >"$o/lib/x.txt"
+  printf 'a: 1\nb:\n  c: 2\n' >"$o/.github/w.yml"
+  git -C "$o" commit -qam v3
+  V3=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v4 main
+  printf 'one\ntwo\nthree\n' >"$o/lib/x.txt"
+  printf 'a: 1\nb:\nc: 2\n' >"$o/.github/w.yml"
+  git -C "$o" commit -qam v4
+  V4=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v5a "$V1"
+  printf '\000\001c' >"$o/lib/b.bin"
+  git -C "$o" commit -qam v5a
+  V5A=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v5b "$V2"
+  printf '\000\001d' >"$o/lib/b.bin"
+  git -C "$o" commit -qam v5b
+  V5B=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vm "$V2"
+  chmod +x "$o/lib/x.txt"
+  git -C "$o" commit -qam vm
+  VM=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vsa "$V1"
+  printf 'target' >"$o/lib/s"
+  git -C "$o" add -A && git -C "$o" commit -qm vsa
+  VSA=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vsb "$V2"
+  ln -s target "$o/lib/s"
+  git -C "$o" add -A && git -C "$o" commit -qm vsb
+  VSB=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vp "$V2"
+  printf 'x\n' >"$o/.github/new.yml"
+  git -C "$o" add -A && git -C "$o" commit -qm vp
+  VP=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q main
+  ORIGIN="$o"
+}
+make_origin
+
 PASS=0
 FAILED=0
 CASE=""
@@ -71,7 +148,7 @@ new_case() {
 
 run_gate() {
   set +e
-  OUT=$(PATH="$WORK/bin:$PATH" REPO=kevin-sakemaer/k PR=8 bash "$SCRIPT" 2>&1)
+  OUT=$(PATH="$WORK/bin:$PATH" K_GATE_TEST=1 GATE_GIT_URL="${GATE_GIT_URL:-$WORK/no-such-repo}" REPO=kevin-sakemaer/k PR=8 bash "$SCRIPT" 2>&1)
   CODE=$?
   set -e
 }
@@ -317,6 +394,179 @@ new_case "missing base fails closed" labeled review:approved
 printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\n' >"$MOCK/pulls.out"
 run_gate
 check 1 "PR base is 'unknown', not main" kept
+
+# Same-patch rule (#52): real git objects from the local origin.
+# rebase_case NAME ACTION APPROVED HEAD: label added at 10:00 while APPROVED
+# was the head (pushed 09:00); HEAD pushed at 11:00.
+rebase_case() {
+  new_case "$1" "$2" review:approved
+  printf '%s\tkevin-sakemaer/k\tfeature\tfalse\tmain\n' "$4" >"$MOCK/pulls.out"
+  echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+  printf '%s 2026-10-20T09:00:00Z\n%s 2026-10-20T11:00:00Z\n' "$3" "$4" >"$MOCK/activity.out"
+}
+run_rebase() {
+  GATE_GIT_URL="$ORIGIN" run_gate
+}
+# real_mismatch: both patch-ids were computed and differ (not an error).
+real_mismatch() {
+  if [ "$(grep -c '^Patch-id (stable verbatim) at .*: [0-9a-f]\{40\} [0-9a-f]\{40\}$' <<<"$OUT")" != 2 ]; then
+    FAILED=$((FAILED + 1)); echo "FAIL - $CASE (patch-ids not both computed)"
+  fi
+}
+no_marker() {
+  if grep -q 'issues/8/comments' "$MOCK/calls"; then
+    FAILED=$((FAILED + 1)); echo "FAIL - $CASE (marker comment written)"
+  fi
+}
+
+rebase_case "same patch after rebase keeps approval" synchronize "$V1" "$V2"
+run_rebase
+check 0 "same patch: keep" kept
+case "$OUT" in *"Approved SHA for review:approved: $V1"*) ;; *) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (approved SHA not logged)" ;; esac
+if [ "$(grep -o 'Patch-id (stable verbatim) at [a-z0-9 ]*: [0-9a-f]\{40\} [0-9a-f]\{40\}' <<<"$OUT" | awk '{print $NF}' | sort -u | wc -l)" != 1 ]; then
+  FAILED=$((FAILED + 1)); echo "FAIL - $CASE (both patch-ids not logged equal)"
+fi
+if ! grep -q "POST repos/kevin-sakemaer/k/issues/8/comments -f body=<!-- k-gate:approved-by-rebase label=review:approved sha=$V2 from=$V1 patch-id=" "$MOCK/calls"; then
+  FAILED=$((FAILED + 1)); echo "FAIL - $CASE (no approved-by-rebase marker)"
+fi
+
+rebase_case "same patch: later label run still passes" labeled "$V1" "$V2"
+run_rebase
+check 0 "Review approved (same patch as the approved SHA)." kept
+no_marker
+
+rebase_case "same patch on a draft keeps the label but fails as draft" synchronize "$V1" "$V2"
+printf '%s\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' "$V2" >"$MOCK/pulls.out"
+run_rebase
+check 1 "PR is a draft" kept
+
+rebase_case "same patch ignores the caller's GIT_DIR (git hook)" synchronize "$V1" "$V2"
+GIT_DIR="$WORK/hook-git-dir" GIT_INDEX_FILE="$WORK/hook-index" GATE_GIT_URL="$ORIGIN" run_gate
+check 0 "same patch: keep" kept
+if [ -e "$WORK/hook-git-dir" ]; then FAILED=$((FAILED + 1)); echo "FAIL - $CASE (GIT_DIR used)"; fi
+
+rebase_case "conflict resolution (changed patch) removes approval" synchronize "$V1" "$V3"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+no_marker
+case "$OUT" in *"patch differs or unknown: drop"*) ;; *) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (decision not logged)" ;; esac
+
+rebase_case "changed patch on a later label run removes approval" labeled "$V1" "$V3"
+run_rebase
+check 1 "review:approved predates the latest push" deleted
+
+rebase_case "whitespace-only change removes approval" synchronize "$V1" "$V4"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+real_mismatch
+
+rebase_case "binary content change removes approval" synchronize "$V5A" "$V5B"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+real_mismatch
+
+rebase_case "empty diff on both sides removes approval" synchronize "$E0" "$E1"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+case "$OUT" in *"Empty diff"*) ;; *) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (empty diff not reported)" ;; esac
+
+rebase_case "empty diff at head only removes approval" synchronize "$V1" "$E1"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+
+rebase_case "missing approval record removes approval" synchronize "$V1" "$V2"
+: >"$MOCK/timeline.out"
+run_rebase
+check 1 "no approval record: drop" deleted
+
+rebase_case "no push before the label removes approval" synchronize "$V1" "$V2"
+printf '%s 2026-10-20T11:00:00Z\n' "$V2" >"$MOCK/activity.out"
+run_rebase
+check 1 "approved SHA unknown: drop" deleted
+
+rebase_case "push at the label time is ambiguous and removes approval" synchronize "$V1" "$V2"
+printf '%s 2026-10-20T10:00:00Z\n%s 2026-10-20T11:00:00Z\n' "$V1" "$V2" >"$MOCK/activity.out"
+run_rebase
+check 1 "ambiguous approved SHA" deleted
+
+rebase_case "activity API error removes approval" synchronize "$V1" "$V2"
+echo 500 >"$MOCK/activity.status"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+
+rebase_case "timeline API error removes approval" synchronize "$V1" "$V2"
+echo 500 >"$MOCK/timeline.status"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+
+rebase_case "fetch error removes approval" synchronize "$V1" "$V2"
+run_gate
+check 1 "review:approved removed after a new push" deleted
+
+rebase_case "unknown approved commit removes approval" synchronize "$(printf 'f%.0s' {1..40})" "$V2"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+
+rebase_case "marker comment error removes approval" synchronize "$V1" "$V2"
+echo 500 >"$MOCK/comments.status"
+run_rebase
+check 1 "Could not write the approved-by-rebase marker comment" deleted
+
+rebase_case "invalid head SHA removes approval" synchronize "$V1" "AAAA"
+run_rebase
+check 1 "head SHA or base branch unknown: drop" deleted
+
+rebase_case "fork head with the same patch removes approval" synchronize "$V1" "$V2"
+printf '%s\tsomeone/k\tfeature\tfalse\tmain\n' "$V2" >"$MOCK/pulls.out"
+run_rebase
+check 1 "(fork): drop" deleted
+no_marker
+
+rebase_case "mode change (+x) removes approval" synchronize "$V1" "$VM"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+real_mismatch
+
+rebase_case "file replaced by a symlink removes approval" synchronize "$VSA" "$VSB"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+real_mismatch
+
+for bad in 2026-10-20T09:00:00.5Z 2026-10-20T09:00:00+00:00 "2026-10-20 09:00:00Z" 2026-13-45T09:00:00Z; do
+  rebase_case "malformed push time '$bad' removes approval" synchronize "$V1" "$V2"
+  printf '%s %s\n%s 2026-10-20T11:00:00Z\n' "$V1" "$bad" "$V2" >"$MOCK/activity.out"
+  run_rebase
+  check 1 "review:approved removed after a new push" deleted
+done
+
+rebase_case "malformed label time removes approval" synchronize "$V1" "$V2"
+echo "labeled review:approved 2026-10-20T10:00:00.000Z" >"$MOCK/timeline.out"
+run_rebase
+check 1 "Malformed label time" deleted
+
+rebase_case "approved SHA is the latest push before the label, any order" synchronize "$V1" "$V2"
+printf '%s 2026-10-20T11:00:00Z\n%s 2026-10-20T09:30:00Z\n%s 2026-10-20T08:00:00Z\n' "$V2" "$V1" "$V3" >"$MOCK/activity.out"
+run_rebase
+check 0 "Approved SHA for review:approved: $V1" kept
+
+rebase_case "a later push before the label is the approved SHA" synchronize "$V1" "$V2"
+printf '%s 2026-10-20T08:00:00Z\n%s 2026-10-20T09:59:59Z\n%s 2026-10-20T11:00:00Z\n' "$V1" "$V3" "$V2" >"$MOCK/activity.out"
+run_rebase
+check 1 "Approved SHA for review:approved: $V3" deleted
+
+rebase_case "two pushes at the same time before the label remove approval" synchronize "$V1" "$V2"
+printf '%s 2026-10-20T09:00:00Z\n%s 2026-10-20T09:00:00Z\n%s 2026-10-20T11:00:00Z\n' "$V1" "$V3" "$V2" >"$MOCK/activity.out"
+run_rebase
+check 1 "ambiguous" deleted
+
+rebase_case "injected git config is ignored" synchronize "$V1" "$V2"
+GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.noprefix GIT_CONFIG_VALUE_0=true GIT_CONFIG_PARAMETERS="'core.abbrev'='7'" GIT_CONFIG_GLOBAL="$WORK/nope" K_GATE_TEST=1 GATE_GIT_URL="$ORIGIN" run_gate
+check 0 "same patch: keep" kept
+
+rebase_case "reopened with the same patch still removes approval" reopened "$V1" "$V2"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+no_marker
 
 echo "$PASS passed, $FAILED failed"
 [ "$FAILED" = 0 ]

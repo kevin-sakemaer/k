@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Review gate for pull requests. Fails closed on any doubt or API error.
+# A push removes review:approved unless the patch is unchanged (pure rebase,
+# same_patch in freshness.sh, #52).
 #
 # Required environment: REPO (owner/name), PR (number), ACTION (event action).
 # GH can point to another gh binary; tests put a fake gh first in PATH.
@@ -67,9 +69,15 @@ main() {
 
   # A reopened PR is treated like a push: pushes made while the PR was closed
   # produce no synchronize run and no head_ref_force_pushed event.
+  # On synchronize, the label stays only when the patch is unchanged (#52).
+  local kept=0
   if { [ "$ACTION" = "synchronize" ] || [ "$ACTION" = "reopened" ]; } && has_label 'review:approved'; then
-    remove_approved
-    fail "review:approved removed after a new push; a new review is required"
+    if [ "$ACTION" = "synchronize" ] && keep_after_push 'review:approved'; then
+      kept=1
+    else
+      remove_approved
+      fail "review:approved removed after a new push; a new review is required"
+    fi
   fi
   # Draft-first rule (#27): a draft PR never passes, even with review:approved.
   # The approval label is kept: marking the PR ready re-runs this gate.
@@ -98,6 +106,10 @@ main() {
   echo "review:approved added at: ${approved_at:-none}"
   echo "Head pushed at: ${head_at:-unknown} (source: $source)"
   if ! is_newer "$approved_at" "$head_at"; then
+    if [ "$kept" = 1 ] || same_patch 'review:approved' "$timeline"; then
+      echo "Review approved (same patch as the approved SHA)."
+      return 0
+    fi
     remove_approved
     fail "review:approved predates the latest push; a new review is required"
   fi

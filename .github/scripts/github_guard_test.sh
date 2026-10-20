@@ -21,7 +21,7 @@ while [ $# -gt 0 ]; do
     -X) shift 2 ;;
     -i | --include) include=1; shift ;;
     --paginate) shift ;;
-    --jq) shift 2 ;;
+    --jq | -f) shift 2 ;;
     *) endpoint="$1"; shift ;;
   esac
 done
@@ -29,6 +29,7 @@ case "$endpoint" in
   */pulls/*/files*) key=files ;;
   */pulls/*) key=pulls ;;
   */labels/*) key=delete ;;
+  */issues/*/comments) key=comments ;;
   */labels) key=labels ;;
   */timeline*) key=timeline ;;
   */activity*) key=activity ;;
@@ -47,6 +48,82 @@ fi
 if [ "$include" = 0 ] && [ -f "$MOCK/$key.out" ]; then cat "$MOCK/$key.out"; fi
 MOCK
 chmod +x "$WORK/bin/gh"
+
+# Same-patch fixture (#52): a local origin repository with real commits.
+# main: C0 then C1 (unrelated). V1 is the approved head, branched from C0.
+# V2 rebases V1 onto C1 (same patch). V3 resolves a conflict differently
+# (changed patch). V4 only changes whitespace. V5A and V5B are V1 and V2
+# with different binary contents.
+# VM is V2 with lib/x.txt made executable. VSA adds lib/s as a file
+# and VSB (rebased) as a symlink with the same content.
+# E0 and E1 have an empty diff from main. VP adds a protected file.
+make_origin() {
+  local o="$WORK/origin"
+  # A git hook sets GIT_DIR and GIT_INDEX_FILE: never touch that repository.
+  unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR
+  unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_NAMESPACE GIT_PREFIX
+  export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@example.com GIT_AUTHOR_DATE='2026-01-01T00:00:00Z'
+  export GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@example.com GIT_COMMITTER_DATE='2026-01-01T00:00:00Z'
+  git init -q -b main "$o"
+  git -C "$o" config uploadpack.allowAnySHA1InWant true
+  mkdir -p "$o/.github" "$o/lib"
+  printf 'a: 1\n' >"$o/.github/w.yml"
+  printf 'one\ntwo\n' >"$o/lib/x.txt"
+  printf '\000\001a' >"$o/lib/b.bin"
+  printf 'base\n' >"$o/README.md"
+  git -C "$o" add -A && git -C "$o" commit -qm c0
+  local c0; c0=$(git -C "$o" rev-parse HEAD)
+  E0=$c0
+  git -C "$o" checkout -q -b v1
+  printf 'one\ntwo\nthree\n' >"$o/lib/x.txt"
+  printf 'a: 1\nb:\n  c: 2\n' >"$o/.github/w.yml"
+  git -C "$o" commit -qam v1
+  V1=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q main
+  printf 'base\nmore\n' >"$o/README.md"
+  git -C "$o" commit -qam c1
+  E1=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v2
+  git -C "$o" cherry-pick "$V1" >/dev/null
+  V2=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v3 main
+  printf 'one\ntwo\nTHREE\n' >"$o/lib/x.txt"
+  printf 'a: 1\nb:\n  c: 2\n' >"$o/.github/w.yml"
+  git -C "$o" commit -qam v3
+  V3=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v4 main
+  printf 'one\ntwo\nthree\n' >"$o/lib/x.txt"
+  printf 'a: 1\nb:\nc: 2\n' >"$o/.github/w.yml"
+  git -C "$o" commit -qam v4
+  V4=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v5a "$V1"
+  printf '\000\001c' >"$o/lib/b.bin"
+  git -C "$o" commit -qam v5a
+  V5A=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b v5b "$V2"
+  printf '\000\001d' >"$o/lib/b.bin"
+  git -C "$o" commit -qam v5b
+  V5B=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vm "$V2"
+  chmod +x "$o/lib/x.txt"
+  git -C "$o" commit -qam vm
+  VM=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vsa "$V1"
+  printf 'target' >"$o/lib/s"
+  git -C "$o" add -A && git -C "$o" commit -qm vsa
+  VSA=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vsb "$V2"
+  ln -s target "$o/lib/s"
+  git -C "$o" add -A && git -C "$o" commit -qm vsb
+  VSB=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vp "$V2"
+  printf 'x\n' >"$o/.github/new.yml"
+  git -C "$o" add -A && git -C "$o" commit -qm vp
+  VP=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q main
+  ORIGIN="$o"
+}
+make_origin
 
 PASS=0
 FAILED=0
@@ -72,7 +149,7 @@ new_case() {
       *) printf '%s\t\n' "$f" >>"$MOCK/files.out" ;;
     esac
   done
-  printf 'AAAA\tkevin-sakemaer/k\tfeature\t%s\n' "$count" >"$MOCK/pulls.out"
+  printf '%s\tkevin-sakemaer/k\tfeature\t%s\tmain\n' "${HEAD:-AAAA}" "$count" >"$MOCK/pulls.out"
   printf '%s\n' "$@" >"$MOCK/labels.out"
   : >"$MOCK/timeline.out"
   : >"$MOCK/activity.out"
@@ -89,7 +166,7 @@ fresh() {
 # check EXPECTED_CODE EXPECTED_TEXT [deleted|kept]
 check() {
   set +e
-  OUT=$(PATH="$WORK/bin:$PATH" REPO=kevin-sakemaer/k PR=8 bash "$SCRIPT" 2>&1)
+  OUT=$(PATH="$WORK/bin:$PATH" K_GATE_TEST=1 GATE_GIT_URL="${GATE_GIT_URL:-$WORK/no-such-repo}" REPO=kevin-sakemaer/k PR=8 bash "$SCRIPT" 2>&1)
   CODE=$?
   set -e
   local ok=1
@@ -321,6 +398,100 @@ else
   FAILED=$((FAILED + 1))
   echo "FAIL - CHECKER_PACKAGES lists every checker package:${missing:- empty list}"
 fi
+
+# Same-patch rule (#52), with real git objects from the local origin.
+# rebase_case NAME ACTION APPROVED HEAD FILES: label added at 10:00 while
+# APPROVED was the head (pushed 09:00); HEAD pushed at 11:00.
+rebase_case() {
+  HEAD="$4" new_case "$1" "$2" "$5" "$L"
+  echo "labeled $L 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+  printf '%s 2026-10-20T09:00:00Z\n%s 2026-10-20T11:00:00Z\n' "$3" "$4" >"$MOCK/activity.out"
+  export GATE_GIT_URL="$ORIGIN"
+}
+# real_mismatch: both patch-ids were computed and differ (not an error).
+real_mismatch() {
+  if [ "$(grep -c '^Patch-id (stable verbatim) at .*: [0-9a-f]\{40\} [0-9a-f]\{40\}$' <<<"$OUT")" != 2 ]; then
+    FAILED=$((FAILED + 1)); echo "FAIL - $CASE (patch-ids not both computed)"
+  fi
+}
+no_marker() {
+  if grep -q 'issues/8/comments' "$MOCK/calls"; then
+    FAILED=$((FAILED + 1)); echo "FAIL - $CASE (marker comment written)"
+  fi
+}
+
+rebase_case "same patch after rebase keeps the label" synchronize "$V1" "$V2" ".github/w.yml lib/x.txt"
+check 0 "Approved by label $L (same patch as the approved SHA)." kept
+case "$OUT" in *"Protected paths changed:"*".github/w.yml"*) ;; *) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (protected path not listed)" ;; esac
+if ! grep -q "POST repos/kevin-sakemaer/k/issues/8/comments -f body=<!-- k-gate:approved-by-rebase label=$L sha=$V2 from=$V1 patch-id=" "$MOCK/calls"; then
+  FAILED=$((FAILED + 1)); echo "FAIL - $CASE (no approved-by-rebase marker)"
+fi
+
+rebase_case "same patch: later label run still passes" labeled "$V1" "$V2" ".github/w.yml lib/x.txt"
+check 0 "(same patch as the approved SHA)" kept
+no_marker
+
+rebase_case "changed patch removes the label and fails" synchronize "$V1" "$V3" ".github/w.yml lib/x.txt"
+check 1 "the Reviewer must add the label" deleted
+no_marker
+
+rebase_case "added protected file after rebase removes the label" synchronize "$V1" "$VP" ".github/new.yml .github/w.yml lib/x.txt"
+check 1 "  .github/new.yml" deleted
+
+rebase_case "changed patch on a later label run removes the label" labeled "$V1" "$V3" ".github/w.yml lib/x.txt"
+check 1 "$L predates the latest push" deleted
+
+rebase_case "whitespace-only change in a protected file removes the label" synchronize "$V1" "$V4" ".github/w.yml lib/x.txt"
+check 1 "the Reviewer must add the label" deleted
+real_mismatch
+
+rebase_case "empty diff on both sides removes the label" synchronize "$E0" "$E1" ""
+check 0 "No protected path changed." deleted
+
+rebase_case "missing approval record removes the label" synchronize "$V1" "$V2" ".github/w.yml"
+: >"$MOCK/timeline.out"
+check 1 "the Reviewer must add the label" deleted
+
+rebase_case "activity API error removes the label" synchronize "$V1" "$V2" ".github/w.yml"
+echo 500 >"$MOCK/activity.status"
+check 1 "the Reviewer must add the label" deleted
+
+rebase_case "fetch error removes the label" synchronize "$V1" "$V2" ".github/w.yml"
+export GATE_GIT_URL="$WORK/no-such-repo"
+check 1 "the Reviewer must add the label" deleted
+
+rebase_case "marker comment error removes the label" synchronize "$V1" "$V2" ".github/w.yml"
+echo 500 >"$MOCK/comments.status"
+check 1 "Could not write the approved-by-rebase marker comment" deleted
+
+rebase_case "fork head with the same patch removes the label" synchronize "$V1" "$V2" ".github/w.yml lib/x.txt"
+printf '%s\tsomeone/k\tfeature\t2\tmain\n' "$V2" >"$MOCK/pulls.out"
+check 1 "(fork): drop" deleted
+no_marker
+
+rebase_case "same-repository head with the same patch keeps the label" synchronize "$V1" "$V2" ".github/w.yml lib/x.txt"
+check 0 "same patch: keep" kept
+
+rebase_case "mode change (+x) removes the label" synchronize "$V1" "$VM" ".github/w.yml lib/x.txt"
+check 1 "the Reviewer must add the label" deleted
+real_mismatch
+
+rebase_case "file replaced by a symlink removes the label" synchronize "$VSA" "$VSB" ".github/w.yml lib/s lib/x.txt"
+check 1 "the Reviewer must add the label" deleted
+real_mismatch
+
+rebase_case "malformed push time removes the label" synchronize "$V1" "$V2" ".github/w.yml"
+printf '%s 2026-10-20T09:00:00.123Z\n%s 2026-10-20T11:00:00Z\n' "$V1" "$V2" >"$MOCK/activity.out"
+check 1 "Malformed push time" deleted
+
+rebase_case "malformed label time removes the label" synchronize "$V1" "$V2" ".github/w.yml"
+echo "labeled $L 2026-10-20T10:00:00+02:00" >"$MOCK/timeline.out"
+check 1 "Malformed label time" deleted
+
+rebase_case "reopened with the same patch still removes the label" reopened "$V1" "$V2" ".github/w.yml"
+check 1 "the Reviewer must add the label" deleted
+no_marker
+unset GATE_GIT_URL
 
 echo "github_guard: $PASS passed, $FAILED failed"
 [ "$FAILED" = 0 ]
