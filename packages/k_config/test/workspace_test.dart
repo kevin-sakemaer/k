@@ -10,7 +10,7 @@ void main() {
     test('reads member packages and their direct dependencies', () {
       final workspace = Workspace.load(createRepository());
 
-      expect(workspace.packages, {'alpha', 'beta'});
+      expect(workspace.packages, {'workspace_root', 'alpha', 'beta'});
       expect(workspace.directDependencies, {'yaml', 'third_party', 'test'});
       expect(workspace.containsFile('packages/alpha/lib/legacy.dart'), isTrue);
       expect(
@@ -54,6 +54,10 @@ dev_dependencies:
       'a missing member pubspec': (
         {'pubspec.yaml': 'name: r\nworkspace: [packages/gamma]\n'},
         'packages/gamma/pubspec.yaml: file not found.',
+      ),
+      'a root without name': (
+        {'pubspec.yaml': 'workspace: [packages/alpha]\n'},
+        'pubspec.yaml: "name" must be a string.',
       ),
       'a member without name': (
         {'packages/beta/pubspec.yaml': 'version: 1.0.0\n'},

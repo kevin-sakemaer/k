@@ -254,12 +254,13 @@ for i in "${!packages[@]}"; do
   [ "$total" -gt 0 ] || fail "coverage: no executable lines in $pkg/lib"
   pct="$(awk -v h="$hit" -v t="$total" 'BEGIN { printf "%.2f", 100 * h / t }')"
   echo "Coverage $pkg: ${pct}% (${hit}/${total} lines), required ${threshold}%"
-  awk -v h="$hit" -v t="$total" -v m="$threshold" 'BEGIN { exit !(100 * h >= m * t) }' \
-    || fail "coverage of $pkg is ${pct}%, below the threshold ${threshold}%"
+  # Written before the comparison so that a failing package is listed too.
   if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo "- Coverage $pkg: ${pct}% (${hit}/${total} lines), required ${threshold}%" \
       >>"$GITHUB_STEP_SUMMARY"
   fi
+  awk -v h="$hit" -v t="$total" -v m="$threshold" 'BEGIN { exit !(100 * h >= m * t) }' \
+    || fail "coverage of $pkg is ${pct}%, below the threshold ${threshold}%"
 done
 
 

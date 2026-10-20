@@ -37,7 +37,11 @@ final class Workspace {
         'pubspec.yaml: "workspace" must be a list of package paths.',
       );
     }
-    final packages = <String>{};
+    final Object? rootName = rootPubspec['name'];
+    if (rootName is! String) {
+      throw const WorkspaceException('pubspec.yaml: "name" must be a string.');
+    }
+    final packages = <String>{rootName};
     final dependencies = <String>{..._dependencyNames(rootPubspec, '')};
     for (final Object? member in members) {
       if (member is! String) {
@@ -65,7 +69,7 @@ final class Workspace {
   /// Directory that contains the root `pubspec.yaml` and `k.yaml`.
   final Directory root;
 
-  /// Names of the workspace member packages.
+  /// Names of the workspace packages: the root package and every member.
   final Set<String> packages;
 
   /// Names of the direct dependencies, regular or dev, of the root and of the

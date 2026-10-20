@@ -172,6 +172,33 @@ expect "no thresholds fails" 1 "k_config printed an empty value for coverage.thr
 r="$(new_repo)"
 summary="$r/summary.md"
 : >"$summary"
+printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
+GITHUB_STEP_SUMMARY="$summary" expect "a failing package fails" 1 \
+  "below the threshold 100%" "$r"
+if grep -qF -- "- Coverage packages/a: 50.00% (1/2 lines), required 100%" "$summary"; then
+  echo "ok   - job summary lists a failing package"
+  pass=$((pass + 1))
+else
+  echo "FAIL - job summary lists a failing package"
+  failed=$((failed + 1))
+fi
+
+# The workspace root with a lib/ is measured with its own threshold.
+r="$(new_repo)"
+mkdir -p "$r/lib" "$r/test"
+printf 'int root() {\n  return 0;\n}\n' >"$r/lib/root.dart"
+printf 'void main() {}\n' >"$r/test/root_test.dart"
+printf 'SF:@PKG@/lib/root.dart\nLF:2\nLH:2\nend_of_record\n' >"$r/fake.lcov"
+printf '{"packages":[{"name":"ws","path":"%s"},{"name":"a","path":"%s"}]}' \
+  "$r" "$r/packages/a" >"$r/.fake_ws_json"
+expect "a root without threshold fails" 1 \
+  "k_config printed no coverage threshold for package ws" "$r"
+printf 'a\t100\nws\t100\n' >"$r/.fake_thresholds"
+expect "a root with lib/ gets its threshold" 0 "Coverage .: 100.00% (2/2 lines), required 100%" "$r"
+
+r="$(new_repo)"
+summary="$r/summary.md"
+: >"$summary"
 GITHUB_STEP_SUMMARY="$summary" expect "coverage is written to the job summary" 0 \
   "All checks passed." "$r"
 if grep -qF -- "- Coverage packages/a: 100.00% (2/2 lines), required 100%" "$summary"; then
@@ -344,6 +371,14 @@ if [ -n "$real_dart" ] && [ -f "$here/../packages/k_config/bin/k_config.dart" ];
     pass=$((pass + 1))
   else
     echo "FAIL - flow style k.yaml is read by k_config: $got"
+    failed=$((failed + 1))
+  fi
+  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  if got="$(kget_real coverage.thresholds)" && [ "$got" = "$(printf 'a\t100\nws\t100')" ]; then
+    echo "ok   - k_config gives the workspace root a threshold"
+    pass=$((pass + 1))
+  else
+    echo "FAIL - k_config gives the workspace root a threshold: $got"
     failed=$((failed + 1))
   fi
   # The Guardian's coverage.default cases, now enforced by k_config.
