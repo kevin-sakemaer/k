@@ -1,4 +1,5 @@
 <!-- One issue = one branch = one PR. Fill in every section; everything must be in English. -->
+<!-- Draft-first (#27): open with `gh pr create --draft`, run `gh pr ready` only once every CI check is green, and `gh pr ready --undo` if CI turns red after review. -->
 
 ## Linked issue
 
@@ -20,6 +21,7 @@ Closes #
 
 - [ ] The [Pre-commit checklist](https://github.com/kevin-sakemaer/k/blob/main/AGENTS.md#pre-commit-checklist) of `AGENTS.md` is applied: branch contains up-to-date `origin/main`, `tool/check.sh` passes (hooks installed with `tool/install_hooks.sh`), and `git diff origin/main` was self-reviewed
 
+- [ ] Opened as a draft and marked ready only once every CI check is green (back to draft with `gh pr ready --undo` if CI turns red)
 - [ ] Everything (title, description, commits, code comments, docs) is in English
 - [ ] Only `///` doc comments in Dart code (no `//`, `/* */`, `/** */`, no `// ignore:`)
 - [ ] Tests added/updated
