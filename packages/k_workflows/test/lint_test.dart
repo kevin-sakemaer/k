@@ -272,6 +272,10 @@ void main() {
         'o/r/.github/workflows/w.yml@main',
         'o/r/.github/workflows/w.yml@$sha@$sha',
         '/r/.github/workflows/w.yml@$sha',
+        'o/r/.github/workflows/w.yml@${sha.toUpperCase()}',
+        'o/r/.github/workflows/w.yml@${sha.substring(1)}',
+        'o/r/.github/workflows/w.yml@${sha}0',
+        'o/r/.github/workflows/w.YML@$sha',
       ]) {
         expect(lint(caller('"$uses" # v1')), [
           contains('must be owner/repo/.github/workflows/'),
