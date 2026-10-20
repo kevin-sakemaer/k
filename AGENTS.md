@@ -49,7 +49,7 @@ tool/install_hooks.sh
    - Known limit: `pull_request_target` runs the workflow from the PR's *new* base. A PR retargeted to a branch that does not contain this `auto-merge` workflow (an old branch cut before #35) keeps auto-merge armed. The Lead decided not to extend the ruleset to all branches (required checks would block pushes on feature branches, and `review-gate` fails on drafts). Mitigation: delete every branch whose PR is merged or closed (never a branch with an open PR) and keep active branches rebased on `main`, so every possible base contains this workflow.
 2. **Draft-first** (#27): open the PR as a draft (`gh pr create --draft`) and mark it ready (`gh pr ready`) only once every CI check is green. The Reviewer reviews only non-draft PRs with fully green CI and skips draft, red or pending PRs. If a push after review turns CI red, the author converts the PR back to draft (`gh pr ready --undo`) until CI is green again. `review-gate` fails on a draft PR, even with `review:approved`, so a draft PR never merges, even with auto-merge enabled.
    Reference the issue in the PR: `Closes #N` only if the PR fully delivers the issue; otherwise `Part of #N` or `Refs #N`, with no closing keyword (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved` followed by `#N`) anywhere in the title, description or commit messages (see Pre-commit checklist point 7).
-3. Required checks on `main`: **`test`**, **`review-gate`** and **`github-guard`**.
+3. Required checks on `main`: **`test`**, **`review-gate`**, **`github-guard`** and **`k-config`**.
    - `test`: runs `tool/check.sh` (see Pre-commit checklist). It always runs the review-gate script tests; it fails if `pubspec.yaml` is missing, then runs format, analyze, the repository scripts, tests and coverage, and fails if any workspace package has no tests or no member package is tested.
    - `review-gate`: fails on a PR whose base is not `main`, on a draft PR, without the `review:approved` label, or when `review:changes-requested` is present. It also runs on `ready_for_review` and `converted_to_draft`; on a draft PR it keeps `review:approved` (marking the PR ready re-runs the gate), but a push still removes it.
 4. **Reviewer verdict**: a comment on the PR **and** a label, `review:approved` or `review:changes-requested`. Before re-approving, the Reviewer removes `review:changes-requested`.
@@ -92,7 +92,7 @@ tool/install_hooks.sh
 
 ## Current status (#2)
 - Done: squash merge only, branches deleted after merge, auto-merge enabled.
-- The `main` ruleset is active: PR required, squash only, 0 approvals, resolved threads, strict required checks `test`, `review-gate` and `github-guard`, no force-push, no deletion, no bypass. Direct pushes to `main` are rejected.
+- The `main` ruleset is active: PR required, squash only, 0 approvals, resolved threads, strict required checks `test`, `review-gate`, `github-guard` and `k-config`, no force-push, no deletion, no bypass. Direct pushes to `main` are rejected.
 
 ## Dependencies
 - **Direct** dependencies are allowed only if their verified publisher on pub.dev is `dart.dev`, `tools.dart.dev` or `labs.dart.dev`.
@@ -100,7 +100,7 @@ tool/install_hooks.sh
 - The registry is a fixed policy in `k_config`, like the publishers: `DependenciesConfig.registryUrl` (`https://pub.dev`) and `DependenciesConfig.hostedAliases` (`https://pub.dev`, `https://pub.dartlang.org`), and `DependenciesConfig.registryTimeout` (30 seconds, for the connection and the whole response). `k.yaml` has no key for them, because a configurable registry would bypass the publisher rule; `k_publishers` hard-codes no URL.
 
 ## k.yaml
-`k.yaml` at the repository root holds every quality setting. It is validated by `packages/k_config` (`dart run packages/k_config/bin/k_config.dart`) by `tool/check.sh`, so it runs in the required `test` check. The separate `k-config` workflow runs the same validation and writes the job summary; it is not a required check. On success the job summary lists every active override and exception with its reason.
+`k.yaml` at the repository root holds every quality setting. It is validated by `packages/k_config` (`dart run packages/k_config/bin/k_config.dart`) by `tool/check.sh`, so it runs in the required `test` check. The separate `k-config` workflow runs the same validation and writes the job summary; it is a required check on `main`. On success the job summary lists every active override and exception with its reason.
 
 ```yaml
 coverage:
