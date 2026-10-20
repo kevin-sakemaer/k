@@ -25,6 +25,7 @@ Other checks read the typed values with `loadKConfig(Directory root)`.
 ```yaml
 coverage:
   default: 100              # Line coverage threshold in percent, 0 to 100.
+  tool_version: 1.16.0      # Exact package:coverage version, MAJOR.MINOR.PATCH.
   overrides:                # Required, may be {}.
     some_package:           # Must be a workspace package.
       threshold: 95         # 0 to 100.
@@ -50,6 +51,7 @@ Validation fails on:
 - a duplicated key, including a duplicated section;
 - a value of the wrong type;
 - a threshold outside 0 to 100;
+- a `coverage.tool_version` that is not an exact `MAJOR.MINOR.PATCH` string;
 - a missing or blank `reason`;
 - a coverage override for a package that is not in the workspace, or whose
   threshold is not strictly lower than `coverage.default`;

@@ -23,7 +23,15 @@ final class KConfig {
 /// Settings of the coverage check.
 final class CoverageConfig {
   /// Creates coverage settings.
-  const new({required this.defaultThreshold, required this.overrides});
+  const new({
+    required this.defaultThreshold,
+    required this.overrides,
+    required this.toolVersion,
+  });
+
+  /// Exact version of `package:coverage` (publisher tools.dart.dev) used to
+  /// build the coverage report, in `MAJOR.MINOR.PATCH` form.
+  final String toolVersion;
 
   /// Line coverage threshold, in percent, of every package without override.
   final num defaultThreshold;

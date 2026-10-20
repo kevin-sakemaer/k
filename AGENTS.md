@@ -80,6 +80,7 @@ tool/install_hooks.sh
 ```yaml
 coverage:
   default: 100              # Line coverage threshold in percent, 0 to 100.
+  tool_version: 1.16.0      # Exact package:coverage version, MAJOR.MINOR.PATCH.
   overrides:                # Required, may be {}.
     some_package:           # Must be a workspace package.
       threshold: 95         # Strictly lower than coverage.default.
@@ -95,11 +96,11 @@ comments:
       reason: "Why this file needs non-documentation comments."
 ```
 
-- `coverage`: `default` applies to every package; an override lowers it for one package and must be strictly lower than `default`.
+- `coverage`: `default` applies to every package; an override lowers it for one package and must be strictly lower than `default`. Overrides are validated now, but `tool/check.sh` only enforces `coverage.default` for every package until #5 lands; until then an override has no effect on the coverage check. `tool_version` is the exact version of `package:coverage` (tools.dart.dev) that `tool/check.sh` activates to build the lcov report.
 - `dependencies`: the publishers `dart.dev`, `tools.dart.dev` and `labs.dart.dev` are fixed in `k_config` and cannot be changed from `k.yaml` (an `allowed_publishers` key fails as an unknown key). Any other direct dependency needs an entry in `exceptions`.
 - `comments`: files allowed to contain non-documentation comments.
 
-Validation fails on an unknown or missing key at any level, a duplicated key, a wrong type, a threshold outside 0 to 100, a coverage override not strictly lower than `coverage.default` or for a package outside the workspace, a missing or blank `reason` (or `approved_by`), a dependency exception for a package that is not a direct dependency, and a comment exception for a missing or duplicated file.
+Validation fails on an unknown or missing key at any level, a duplicated key, a wrong type, a threshold outside 0 to 100, a `tool_version` that is not an exact `MAJOR.MINOR.PATCH` string, a coverage override not strictly lower than `coverage.default` or for a package outside the workspace, a missing or blank `reason` (or `approved_by`), a dependency exception for a package that is not a direct dependency, and a comment exception for a missing or duplicated file.
 
 ### Adding an exception
 1. Get Kevin's approval first: **every exception requires Kevin's agreement** (through Grok Bot).

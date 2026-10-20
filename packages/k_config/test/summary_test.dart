@@ -7,6 +7,7 @@ void main() {
       const config = KConfig(
         coverage: CoverageConfig(
           defaultThreshold: 100,
+          toolVersion: '1.16.0',
           overrides: {
             'alpha': CoverageOverride(
               threshold: 95.5,
@@ -38,6 +39,8 @@ The configuration is valid.
 
 Default line coverage threshold: 100%.
 
+Coverage tool: package:coverage 1.16.0.
+
 | Package | Threshold | Reason |
 | --- | --- | --- |
 | alpha | 95.5% | Pipes \| and new lines are escaped. |
@@ -61,7 +64,11 @@ Allowed publishers: dart.dev, tools.dart.dev, labs.dart.dev.
 
     test('says when nothing is overridden', () {
       const config = KConfig(
-        coverage: CoverageConfig(defaultThreshold: 100, overrides: {}),
+        coverage: CoverageConfig(
+          defaultThreshold: 100,
+          overrides: {},
+          toolVersion: '1.16.0',
+        ),
         dependencies: DependenciesConfig(exceptions: {}),
         comments: CommentsConfig(exceptions: []),
       );
