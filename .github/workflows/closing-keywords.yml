@@ -1,0 +1,40 @@
+name: closing-keywords
+
+# Fails when a partial PR (Part of #N or Refs #N in its title, description or
+# commit messages) contains a closing keyword followed by an issue reference
+# anywhere in those texts (#26, AGENTS.md checklist point 7). The rule lives in
+# .github/scripts/closing_keywords.sh. pull_request_target runs this workflow
+# and its script as defined on the base branch. Never check out or run code
+# from the PR head here.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+concurrency:
+  group: closing-keywords-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  closing-keywords:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # github.sha is the tip of the base branch under pull_request_target,
+          # so workflow and scripts come from the same commit, never the PR head.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Check closing keywords
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: bash .github/scripts/closing_keywords.sh
