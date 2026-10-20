@@ -72,6 +72,23 @@ final class DependenciesConfig {
     'labs.dart.dev',
   ];
 
+  /// Base URL of the registry whose publisher API the check queries, as
+  /// `<registryUrl>/api/packages/<name>/publisher`.
+  ///
+  /// The registry is a fixed policy and cannot be changed from `k.yaml`: a
+  /// configurable registry would bypass [allowedPublishers].
+  static const String registryUrl = 'https://pub.dev';
+
+  /// `hosted` URLs, without a trailing slash, that name the registry at
+  /// [registryUrl]. A dependency hosted anywhere else needs an entry in
+  /// [exceptions].
+  ///
+  /// The list is fixed and cannot be changed from `k.yaml`.
+  static const List<String> hostedAliases = [
+    'https://pub.dev',
+    'https://pub.dartlang.org',
+  ];
+
   /// Approved direct dependencies from other publishers, keyed by package
   /// name.
   final Map<String, DependencyException> exceptions;

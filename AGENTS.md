@@ -91,6 +91,7 @@ tool/install_hooks.sh
 ## Dependencies
 - **Direct** dependencies are allowed only if their verified publisher on pub.dev is `dart.dev`, `tools.dart.dev` or `labs.dart.dev`.
 - Any exception must be approved through **Grok Bot**.
+- The registry is a fixed policy in `k_config`, like the publishers: `DependenciesConfig.registryUrl` (`https://pub.dev`) and `DependenciesConfig.hostedAliases` (`https://pub.dev`, `https://pub.dartlang.org`). `k.yaml` has no key for them, because a configurable registry would bypass the publisher rule; `k_publishers` hard-codes no URL.
 
 ## k.yaml
 `k.yaml` at the repository root holds every quality setting. It is validated by `packages/k_config` (`dart run packages/k_config/bin/k_config.dart`) by `tool/check.sh`, so it runs in the required `test` check. The separate `k-config` workflow runs the same validation and writes the job summary; it is not a required check. On success the job summary lists every active override and exception with its reason.

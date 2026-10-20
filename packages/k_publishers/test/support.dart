@@ -19,7 +19,7 @@ final class FakeClient implements PublisherClient {
   Future<String?> publisherOf(String package) async {
     calls.add(package);
     if (!publishers.containsKey(package)) {
-      throw PublisherLookupException('$package: not found on pub.dev.');
+      throw PublisherLookupException('$package: not found on https://pub.dev.');
     }
     return publishers[package];
   }

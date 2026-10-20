@@ -4,6 +4,8 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:k_config/k_config.dart';
+
 /// Thrown when the publisher of a package cannot be read.
 final class PublisherLookupException implements Exception {
   /// Creates an exception with a human readable [message].
@@ -27,11 +29,12 @@ abstract interface class PublisherClient {
 
 /// [PublisherClient] that queries `<baseUri>/api/packages/<name>/publisher`.
 final class PubDevClient implements PublisherClient {
-  /// [PublisherClient] that queries the pub.dev publisher API.
+  /// [PublisherClient] that queries the publisher API of the registry.
   ///
-  /// [baseUri] defaults to `https://pub.dev`; tests point it to a local
-  /// server.
-  new(this._http, {Uri? baseUri}) : _base = baseUri ?? Uri.https('pub.dev');
+  /// [baseUri] defaults to [DependenciesConfig.registryUrl]; tests point it
+  /// to a local server.
+  new(this._http, {Uri? baseUri})
+    : _base = baseUri ?? Uri.parse(DependenciesConfig.registryUrl);
 
   final HttpClient _http;
   final Uri _base;
@@ -54,7 +57,9 @@ final class PubDevClient implements PublisherClient {
       );
     }
     if (status == HttpStatus.notFound) {
-      throw PublisherLookupException('$package: not found on pub.dev.');
+      throw PublisherLookupException(
+        '$package: not found on ${DependenciesConfig.registryUrl}.',
+      );
     }
     if (status != HttpStatus.ok) {
       throw PublisherLookupException('$package: $uri answered HTTP $status.');

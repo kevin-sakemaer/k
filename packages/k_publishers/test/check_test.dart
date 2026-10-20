@@ -51,7 +51,7 @@ void main() {
       [
         'pubspec.yaml: provider: published by dash-overflow.net, $expected',
         'pubspec.yaml: orphan: published by no verified publisher, $expected',
-        'pubspec.yaml: nope: nope: not found on pub.dev.',
+        'pubspec.yaml: nope: nope: not found on https://pub.dev.',
       ],
     );
   });
@@ -70,7 +70,7 @@ void main() {
       ),
       [
         'pubspec.yaml: yaml: unneeded exception (published by tools.dart.dev).',
-        'pubspec.yaml: local: unneeded exception (not from pub.dev).',
+        'pubspec.yaml: local: unneeded exception (not from https://pub.dev).',
       ],
     );
   });
@@ -88,8 +88,8 @@ void main() {
         client,
       ),
       [
-        'pubspec.yaml: remote: not hosted on pub.dev.',
-        'pubspec.yaml: mine: not hosted on pub.dev.',
+        'pubspec.yaml: remote: not hosted on https://pub.dev.',
+        'pubspec.yaml: mine: not hosted on https://pub.dev.',
       ],
     );
   });

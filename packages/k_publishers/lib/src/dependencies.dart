@@ -39,11 +39,6 @@ final class DirectDependency {
   final DependencySource source;
 }
 
-const Set<String> _pubDevHosts = {
-  'https://pub.dev',
-  'https://pub.dartlang.org',
-};
-
 /// Reads the direct dependencies of the root pubspec and of every workspace
 /// member under [root], skipping the workspace packages themselves.
 ///
@@ -86,7 +81,9 @@ DependencySource _source(Object? value) {
   final Object? hosted = value['hosted'];
   final Object? url = hosted is YamlMap ? hosted['url'] : hosted;
   if (url == null ||
-      _pubDevHosts.contains('$url'.replaceAll(RegExp(r'/+$'), ''))) {
+      DependenciesConfig.hostedAliases.contains(
+        '$url'.replaceAll(RegExp(r'/+$'), ''),
+      )) {
     return DependencySource.pubDev;
   }
   return DependencySource.otherHost;

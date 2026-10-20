@@ -17,6 +17,7 @@ Future<List<String>> checkPublishers(
   DependenciesConfig config,
   PublisherClient client,
 ) async {
+  const String registry = DependenciesConfig.registryUrl;
   final problems = <String>[];
   final publishers = <String, Future<String?>>{};
   for (final dependency in dependencies) {
@@ -26,11 +27,11 @@ Future<List<String>> checkPublishers(
     switch (dependency.source) {
       case DependencySource.sdk || DependencySource.path:
         if (excepted) {
-          problems.add('$where: unneeded exception (not from pub.dev).');
+          problems.add('$where: unneeded exception (not from $registry).');
         }
       case DependencySource.git || DependencySource.otherHost:
         if (!excepted) {
-          problems.add('$where: not hosted on pub.dev.');
+          problems.add('$where: not hosted on $registry.');
         }
       case DependencySource.pubDev:
         final String? publisher;

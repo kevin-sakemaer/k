@@ -53,7 +53,7 @@ void main() {
   });
 
   for (final (name, message) in [
-    ('missing', 'missing: not found on pub.dev.'),
+    ('missing', 'missing: not found on https://pub.dev.'),
     ('broken', 'answered HTTP 500.'),
     ('garbage', 'answered invalid JSON.'),
     ('odd', 'answered an unexpected document.'),
