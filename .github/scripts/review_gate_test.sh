@@ -58,6 +58,7 @@ chmod +x "$WORK/bin/gh"
 # with different binary contents.
 # VM is V2 with lib/x.txt made executable. VSA adds lib/s as a file
 # and VSB (rebased) as a symlink with the same content.
+# VB1 changes lib/b.bin on V1; VB2 is VB1 rebased (same binary change).
 # E0 and E1 have an empty diff from main. VP adds a protected file.
 make_origin() {
   local o="$WORK/origin"
@@ -118,6 +119,13 @@ make_origin() {
   ln -s target "$o/lib/s"
   git -C "$o" add -A && git -C "$o" commit -qm vsb
   VSB=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vb1 "$V1"
+  printf '\000\001z' >"$o/lib/b.bin"
+  git -C "$o" commit -qam vb1
+  VB1=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vb2 main
+  git -C "$o" cherry-pick "$V1" "$VB1" >/dev/null
+  VB2=$(git -C "$o" rev-parse HEAD)
   git -C "$o" checkout -q -b vp "$V2"
   printf 'x\n' >"$o/.github/new.yml"
   git -C "$o" add -A && git -C "$o" commit -qm vp
@@ -138,7 +146,7 @@ new_case() {
   shift 2
   export MOCK="$WORK/$CASE"
   mkdir -p "$MOCK"
-  printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\tmain\n' >"$MOCK/pulls.out"
+  printf 'AAAA\037kevin-sakemaer/k\037feature\037false\037main\n' >"$MOCK/pulls.out"
   printf '%s\n' "$@" >"$MOCK/labels.out"
   : >"$MOCK/timeline.out"
   : >"$MOCK/activity.out"
@@ -328,26 +336,26 @@ SCRIPT="$SAVED_SCRIPT"
 check 1 "freshness.sh" kept
 
 new_case "draft with fresh approval fails" labeled review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\037true\037main\n' >"$MOCK/pulls.out"
 echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
 echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
 run_gate
 check 1 "PR is a draft" kept
 
 new_case "converted_to_draft fails" converted_to_draft review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\037true\037main\n' >"$MOCK/pulls.out"
 echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
 echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
 run_gate
 check 1 "PR is a draft" kept
 
 new_case "draft without approval fails as draft" opened ci
-printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\037true\037main\n' >"$MOCK/pulls.out"
 run_gate
 check 1 "PR is a draft" kept
 
 new_case "push on draft still removes approval" synchronize review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\037true\037main\n' >"$MOCK/pulls.out"
 run_gate
 check 1 "review:approved removed after a new push" deleted
 
@@ -366,7 +374,7 @@ check 1 "review:approved predates the latest push; a new review is required" del
 # Stale payload: the event says converted_to_draft but the API reads draft
 # false; the gate must follow the API.
 new_case "converted_to_draft with API draft false follows the API" converted_to_draft review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\tmain\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\037false\037main\n' >"$MOCK/pulls.out"
 echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
 echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
 run_gate
@@ -375,7 +383,7 @@ case "$OUT" in *"PR is a draft"*) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (tr
 case "$OUT" in *"Review approved."*) ;; *) FAILED=$((FAILED + 1)); echo "FAIL - $CASE (not approved)" ;; esac
 
 new_case "unknown draft state fails closed" labeled review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\tnull\tmain\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\037null\037main\n' >"$MOCK/pulls.out"
 run_gate
 check 1 "Could not read the PR draft state." kept
 
@@ -386,21 +394,21 @@ run_gate
 check 0 "Base: main" kept
 
 new_case "stacked PR fails even when approved" labeled review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\tfeat/k-config-10\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\037false\037feat/k-config-10\n' >"$MOCK/pulls.out"
 run_gate
 check 1 "PR base is 'feat/k-config-10', not main: stacked PRs are forbidden" kept
 
 new_case "missing base fails closed" labeled review:approved
-printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\037false\n' >"$MOCK/pulls.out"
 run_gate
-check 1 "PR base is 'unknown', not main" kept
+check 1 "Could not parse the PR head." kept
 
 # Same-patch rule (#52): real git objects from the local origin.
 # rebase_case NAME ACTION APPROVED HEAD: label added at 10:00 while APPROVED
 # was the head (pushed 09:00); HEAD pushed at 11:00.
 rebase_case() {
   new_case "$1" "$2" review:approved
-  printf '%s\tkevin-sakemaer/k\tfeature\tfalse\tmain\n' "$4" >"$MOCK/pulls.out"
+  printf '%s\037kevin-sakemaer/k\037feature\037false\037main\n' "$4" >"$MOCK/pulls.out"
   echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
   printf '%s 2026-10-20T09:00:00Z\n%s 2026-10-20T11:00:00Z\n' "$3" "$4" >"$MOCK/activity.out"
 }
@@ -436,7 +444,7 @@ check 0 "Review approved (same patch as the approved SHA)." kept
 no_marker
 
 rebase_case "same patch on a draft keeps the label but fails as draft" synchronize "$V1" "$V2"
-printf '%s\tkevin-sakemaer/k\tfeature\ttrue\tmain\n' "$V2" >"$MOCK/pulls.out"
+printf '%s\037kevin-sakemaer/k\037feature\037true\037main\n' "$V2" >"$MOCK/pulls.out"
 run_rebase
 check 1 "PR is a draft" kept
 
@@ -517,7 +525,7 @@ run_rebase
 check 1 "head SHA or base branch unknown: drop" deleted
 
 rebase_case "fork head with the same patch removes approval" synchronize "$V1" "$V2"
-printf '%s\tsomeone/k\tfeature\tfalse\tmain\n' "$V2" >"$MOCK/pulls.out"
+printf '%s\037someone/k\037feature\037false\037main\n' "$V2" >"$MOCK/pulls.out"
 run_rebase
 check 1 "(fork): drop" deleted
 no_marker
@@ -542,7 +550,7 @@ done
 rebase_case "malformed label time removes approval" synchronize "$V1" "$V2"
 echo "labeled review:approved 2026-10-20T10:00:00.000Z" >"$MOCK/timeline.out"
 run_rebase
-check 1 "Malformed label time" deleted
+check 1 "malformed label time: drop" deleted
 
 rebase_case "approved SHA is the latest push before the label, any order" synchronize "$V1" "$V2"
 printf '%s 2026-10-20T11:00:00Z\n%s 2026-10-20T09:30:00Z\n%s 2026-10-20T08:00:00Z\n' "$V2" "$V1" "$V3" >"$MOCK/activity.out"
@@ -562,7 +570,7 @@ check 1 "ambiguous" deleted
 # Injected git config must not reach bare_git (shared from freshness.sh):
 # each variable redirects the fetch of $ORIGIN to a missing repository, so
 # honoring it would drop the label.
-printf '[url "%s/nowhere"]\n\tinsteadOf = %s\n' "$WORK" "$ORIGIN" >"$WORK/redirect.gitconfig"
+printf '[url "%s/nowhere"]\n\037insteadOf = %s\n' "$WORK" "$ORIGIN" >"$WORK/redirect.gitconfig"
 for inject in count parameters global system; do
   rebase_case "injected git config ($inject) is ignored" synchronize "$V1" "$V2"
   case "$inject" in
@@ -583,6 +591,71 @@ rebase_case "reopened with the same patch still removes approval" reopened "$V1"
 run_rebase
 check 1 "review:approved removed after a new push" deleted
 no_marker
+
+rebase_case "same binary change after rebase keeps approval" synchronize "$VB1" "$VB2"
+run_rebase
+check 0 "same patch: keep" kept
+
+rebase_case "different binary content drops approval (blob ids differ)" synchronize "$VB1" "$V5B"
+run_rebase
+check 1 "review:approved removed after a new push" deleted
+real_mismatch
+
+# Records are split on US (0x1f): an empty field is kept, never collapsed.
+new_case "empty head repository field is not shifted" labeled review:approved
+printf 'AAAA\037\037feature\037false\037main\n' >"$MOCK/pulls.out"
+run_gate
+check 1 "Could not read the PR head." kept
+
+new_case "extra field in the PR record fails closed" labeled review:approved
+printf 'AAAA\037kevin-sakemaer/k\037feature\037false\037main\037x\n' >"$MOCK/pulls.out"
+run_gate
+check 1 "Could not parse the PR head." kept
+
+new_case "tab-separated PR record fails closed" labeled review:approved
+printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\tmain\n' >"$MOCK/pulls.out"
+run_gate
+check 1 "Could not parse the PR head." kept
+
+# Freshness timestamps are strict and compared as epochs.
+for bad in 2026-10-20T10:00:00.5Z 2026-10-20T10:00:00+00:00 2026-10-20T25:00:00Z; do
+  new_case "malformed label time '$bad' fails" labeled review:approved
+  echo "labeled review:approved $bad" >"$MOCK/timeline.out"
+  echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
+  run_gate
+  check 1 "Malformed timestamp '$bad'" kept
+done
+
+new_case "malformed push time fails" labeled review:approved
+echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T09:00:00.000Z" >"$MOCK/activity.out"
+run_gate
+check 1 "Malformed timestamp" kept
+
+new_case "malformed fallback run time fails" labeled review:approved
+echo 404 >"$MOCK/activity.status"
+echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+printf '2026-10-20T09:00:00Z\n2026-10-20T08:00:00+01:00\n' >"$MOCK/runs.out"
+run_gate
+check 1 "Malformed timestamp" kept
+
+new_case "label one second after the push across midnight passes" labeled review:approved
+echo "labeled review:approved 2026-10-21T00:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T23:59:59Z" >"$MOCK/activity.out"
+run_gate
+check 0 "Review approved." kept
+
+new_case "label one second before the push fails" labeled review:approved
+echo "labeled review:approved 2026-10-20T23:59:59Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-21T00:00:00Z" >"$MOCK/activity.out"
+run_gate
+check 1 "review:approved predates the latest push" deleted
+
+new_case "latest of several pushes and labels is used" labeled review:approved
+printf '%s\n' "labeled review:approved 2026-10-20T08:00:00Z" "labeled review:approved 2026-10-20T12:00:00Z" "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+printf '%s\n' "AAAA 2026-10-20T11:00:00Z" "AAAA 2026-10-20T07:00:00Z" >"$MOCK/activity.out"
+run_gate
+check 0 "review:approved added at: 2026-10-20T12:00:00Z" kept
 
 echo "$PASS passed, $FAILED failed"
 [ "$FAILED" = 0 ]

@@ -56,6 +56,7 @@ chmod +x "$WORK/bin/gh"
 # with different binary contents.
 # VM is V2 with lib/x.txt made executable. VSA adds lib/s as a file
 # and VSB (rebased) as a symlink with the same content.
+# VB1 changes lib/b.bin on V1; VB2 is VB1 rebased (same binary change).
 # E0 and E1 have an empty diff from main. VP adds a protected file.
 make_origin() {
   local o="$WORK/origin"
@@ -116,6 +117,13 @@ make_origin() {
   ln -s target "$o/lib/s"
   git -C "$o" add -A && git -C "$o" commit -qm vsb
   VSB=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vb1 "$V1"
+  printf '\000\001z' >"$o/lib/b.bin"
+  git -C "$o" commit -qam vb1
+  VB1=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vb2 main
+  git -C "$o" cherry-pick "$V1" "$VB1" >/dev/null
+  VB2=$(git -C "$o" rev-parse HEAD)
   git -C "$o" checkout -q -b vp "$V2"
   printf 'x\n' >"$o/.github/new.yml"
   git -C "$o" add -A && git -C "$o" commit -qm vp
@@ -145,11 +153,11 @@ new_case() {
   for f in $files; do
     count=$((count + 1))
     case "$f" in
-      *:*) printf '%s\t%s\n' "${f%%:*}" "${f#*:}" >>"$MOCK/files.out" ;;
-      *) printf '%s\t\n' "$f" >>"$MOCK/files.out" ;;
+      *:*) printf '%s\037%s\n' "${f%%:*}" "${f#*:}" >>"$MOCK/files.out" ;;
+      *) printf '%s\037\n' "$f" >>"$MOCK/files.out" ;;
     esac
   done
-  printf '%s\tkevin-sakemaer/k\tfeature\t%s\tmain\n' "${HEAD:-AAAA}" "$count" >"$MOCK/pulls.out"
+  printf '%s\037kevin-sakemaer/k\037feature\037%s\037main\n' "${HEAD:-AAAA}" "$count" >"$MOCK/pulls.out"
   printf '%s\n' "$@" >"$MOCK/labels.out"
   : >"$MOCK/timeline.out"
   : >"$MOCK/activity.out"
@@ -335,7 +343,7 @@ new_case "similar names are not protected" opened "github/x .githubx/y docs/.git
 check 0 "No protected path changed."
 
 new_case "truncated file listing fails closed" opened "lib/a.dart lib/b.dart"
-printf 'AAAA\tkevin-sakemaer/k\tfeature\t3\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\0373\037main\n' >"$MOCK/pulls.out"
 check 1 "the listing is incomplete"
 
 new_case "files API error fails closed" opened "lib/a.dart"
@@ -347,11 +355,11 @@ echo 502 >"$MOCK/labels.status"
 check 1 "GitHub API call failed"
 
 new_case "unreadable file count fails closed" opened "lib/a.dart"
-printf 'AAAA\tkevin-sakemaer/k\tfeature\tnull\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\037null\037main\n' >"$MOCK/pulls.out"
 check 1 "Could not read the number of changed files."
 
 new_case "too many files fails closed" opened "lib/a.dart"
-printf 'AAAA\tkevin-sakemaer/k\tfeature\t3000\n' >"$MOCK/pulls.out"
+printf 'AAAA\037kevin-sakemaer/k\037feature\0373000\037main\n' >"$MOCK/pulls.out"
 check 1 "cannot list them all"
 
 new_case "label removal forbidden fails" synchronize "lib/a.dart" "$L"
@@ -465,7 +473,7 @@ echo 500 >"$MOCK/comments.status"
 check 1 "Could not write the approved-by-rebase marker comment" deleted
 
 rebase_case "fork head with the same patch removes the label" synchronize "$V1" "$V2" ".github/w.yml lib/x.txt"
-printf '%s\tsomeone/k\tfeature\t2\tmain\n' "$V2" >"$MOCK/pulls.out"
+printf '%s\037someone/k\037feature\0372\037main\n' "$V2" >"$MOCK/pulls.out"
 check 1 "(fork): drop" deleted
 no_marker
 
@@ -486,12 +494,12 @@ check 1 "Malformed push time" deleted
 
 rebase_case "malformed label time removes the label" synchronize "$V1" "$V2" ".github/w.yml"
 echo "labeled $L 2026-10-20T10:00:00+02:00" >"$MOCK/timeline.out"
-check 1 "Malformed label time" deleted
+check 1 "malformed label time: drop" deleted
 
 # Injected git config must not reach bare_git (shared from freshness.sh):
 # each variable redirects the fetch of $ORIGIN to a missing repository, so
 # honoring it would drop the label.
-printf '[url "%s/nowhere"]\n\tinsteadOf = %s\n' "$WORK" "$ORIGIN" >"$WORK/redirect.gitconfig"
+printf '[url "%s/nowhere"]\n\037insteadOf = %s\n' "$WORK" "$ORIGIN" >"$WORK/redirect.gitconfig"
 for inject in count parameters global system; do
   rebase_case "injected git config ($inject) is ignored" synchronize "$V1" "$V2" ".github/w.yml lib/x.txt"
   case "$inject" in
@@ -512,6 +520,46 @@ rebase_case "reopened with the same patch still removes the label" reopened "$V1
 check 1 "the Reviewer must add the label" deleted
 no_marker
 unset GATE_GIT_URL
+
+rebase_case "same binary change after rebase keeps the label" synchronize "$VB1" "$VB2" ".github/w.yml lib/b.bin lib/x.txt"
+check 0 "same patch: keep" kept
+
+rebase_case "different binary content drops the label" synchronize "$VB1" "$V5B" ".github/w.yml lib/b.bin lib/x.txt"
+check 1 "the Reviewer must add the label" deleted
+real_mismatch
+unset GATE_GIT_URL
+
+# Records are split on US (0x1f): an empty field is kept, never collapsed.
+new_case "empty head repository field is not shifted" opened "lib/a.dart"
+printf 'AAAA\037\037feature\0371\037main\n' >"$MOCK/pulls.out"
+check 1 "Could not read the PR head."
+
+new_case "tab-separated PR record fails closed" opened "lib/a.dart"
+printf 'AAAA\tkevin-sakemaer/k\tfeature\t1\tmain\n' >"$MOCK/pulls.out"
+check 1 "Could not parse the PR head."
+
+new_case "file with only a previous name fails closed" opened "lib/a.dart"
+printf '\037.github/w.yml\n' >"$MOCK/files.out"
+check 1 "A changed file has no name."
+
+new_case "malformed files record fails closed" opened "lib/a.dart"
+printf 'lib/a.dart\n' >"$MOCK/files.out"
+check 1 "Could not parse the changed files listing."
+
+new_case "malformed label time fails" labeled ".github/w.yml" "$L"
+echo "labeled $L 2026-10-20T10:00:00.1Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
+check 1 "Malformed timestamp" kept
+
+new_case "malformed push time fails" labeled ".github/w.yml" "$L"
+echo "labeled $L 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20 09:00:00Z" >"$MOCK/activity.out"
+check 1 "Malformed timestamp" kept
+
+new_case "label after the push across midnight passes" labeled ".github/w.yml" "$L"
+echo "labeled $L 2026-10-21T00:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T23:59:59Z" >"$MOCK/activity.out"
+check 0 "Approved by label" kept
 
 echo "github_guard: $PASS passed, $FAILED failed"
 [ "$FAILED" = 0 ]
