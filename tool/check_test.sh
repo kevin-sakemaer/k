@@ -373,7 +373,7 @@ if [ -n "$real_dart" ] && [ -f "$here/../packages/k_config/bin/k_config.dart" ];
     echo "FAIL - flow style k.yaml is read by k_config: $got"
     failed=$((failed + 1))
   fi
-  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\ndependencies: {exceptions: {}}\ncomments: {exceptions: []}\n' >"$kroot/k.yaml"
+  printf 'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\ndependencies: {exceptions: {}}\ncomments: {include: ["**.dart"], exclude: [], exceptions: []}\n' >"$kroot/k.yaml"
   if got="$(kget_real coverage.thresholds)" && [ "$got" = "$(printf 'a\t100\nws\t100')" ]; then
     echo "ok   - k_config gives the workspace root a threshold"
     pass=$((pass + 1))

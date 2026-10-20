@@ -45,6 +45,17 @@ enum CommentKind {
 
   /// Message used in reports.
   final String message;
+
+  /// Whether this kind is a forbidden comment, the only kind that a comment
+  /// exception suppresses. File problems (unreadable files and bad symbolic
+  /// links) are always reported.
+  bool get isComment => switch (this) {
+    line || ignore || block || docBlock || unterminatedBlock => true,
+    unreadable ||
+    linkOutsideRoot ||
+    linkToDirectory ||
+    unusedException => false,
+  };
 }
 
 /// A forbidden comment found in a Dart file.
@@ -192,9 +203,10 @@ CommentKind? _kindOf(String lexeme) {
 /// A `.dart` link to a directory is reported as [CommentKind.linkToDirectory].
 /// Other directory links are not followed.
 ///
-/// The violations of a file listed in [CommentScanConfig.exceptions] are not
-/// reported. An exception whose file is not checked or has no violation is
-/// reported as [CommentKind.unusedException], so the list stays minimal.
+/// The forbidden comments of a file listed in [CommentScanConfig.exceptions]
+/// are not reported; its file problems still are. An exception whose file is
+/// not checked or has no forbidden comment is reported as
+/// [CommentKind.unusedException], so the list stays minimal.
 ///
 /// Reported paths are relative to [root] and use `/` separators.
 List<CommentViolation> scanFiles(Directory root, CommentScanConfig config) {
@@ -217,9 +229,13 @@ List<CommentViolation> scanFiles(Directory root, CommentScanConfig config) {
       canonicalRoot,
     );
     if (config.exceptions.contains(path)) {
-      if (found.isNotEmpty) {
+      final Iterable<CommentViolation> comments = found.where(
+        (violation) => violation.kind.isComment,
+      );
+      if (comments.isNotEmpty) {
         usedExceptions.add(path);
       }
+      violations.addAll(found.where((violation) => !violation.kind.isComment));
     } else {
       violations.addAll(found);
     }

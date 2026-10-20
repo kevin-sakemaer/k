@@ -46,6 +46,12 @@ void main() {
     expect(out.toString(), contains('1 forbidden comment(s) found.'));
   });
 
+  test('exits 1 on a file that is not valid UTF-8', () {
+    File('${root.path}/a.dart').writeAsBytesSync(<int>[0xc3, 0x28]);
+    expect(run(<String>[root.path]), 1);
+    expect(out.toString(), contains('a.dart:1:1: cannot read file as UTF-8'));
+  });
+
   test('applies the comment exceptions of k.yaml', () {
     File('${root.path}/a.dart').writeAsStringSync('// kept\n');
     File('${root.path}/k.yaml').writeAsStringSync(

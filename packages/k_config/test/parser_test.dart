@@ -583,6 +583,14 @@ comments: {include: ["**.dart"], exclude: [], exceptions: []}
           ),
         ],
       ),
+      'an invalid comment include glob': (
+        edit('    - "**.dart"', '    - "[unclosed"'),
+        ['k.yaml: comments.include[0]: invalid glob pattern "[unclosed": '],
+      ),
+      'an invalid comment exclude glob': (
+        edit('    - ".dart_tool/**"', '    - "{a,b"'),
+        ['k.yaml: comments.exclude[0]: invalid glob pattern "{a,b": '],
+      ),
       'a duplicated comment exclude glob': (
         edit(
           '    - ".dart_tool/**"',
