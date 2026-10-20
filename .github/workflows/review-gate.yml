@@ -13,28 +13,36 @@ jobs:
   review-gate:
     runs-on: ubuntu-latest
     steps:
-      - name: Remove review:approved after a push
-        if: github.event.action == 'synchronize'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          gh api -X DELETE "repos/$REPO/issues/$PR/labels/review:approved" || true
-          echo "::error::New push: review:approved removed, a new review is required."
-          exit 1
       - name: Check review labels
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
         run: |
+          # Read current labels from the API; the event payload may be stale.
           labels=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name')
           echo "Labels: $labels"
+
+          if [ "$ACTION" = "synchronize" ] && echo "$labels" | grep -qx 'review:approved'; then
+            # A 404 means the label is already gone: not an error.
+            if ! out=$(gh api -X DELETE "repos/$REPO/issues/$PR/labels/review:approved" 2>&1); then
+              if ! echo "$out" | grep -q 'HTTP 404'; then
+                echo "$out"
+                echo "::error::Failed to remove review:approved."
+                exit 1
+              fi
+            fi
+            echo "::error::review:approved removed after a new push; a new review is required"
+            exit 1
+          fi
+
           if echo "$labels" | grep -qx 'review:changes-requested'; then
-            echo "::error::Label review:changes-requested is present."; exit 1
+            echo "::error::Label review:changes-requested is present."
+            exit 1
           fi
           if ! echo "$labels" | grep -qx 'review:approved'; then
-            echo "::error::Label review:approved is missing."; exit 1
+            echo "::error::Waiting for review: label review:approved is missing"
+            exit 1
           fi
           echo "Review approved."
