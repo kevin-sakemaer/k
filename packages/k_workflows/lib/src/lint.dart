@@ -248,24 +248,54 @@ void _lintPermissions(Object? permissions, _JobContext context) {
   }
 }
 
-/// Checks the `uses:` of a job that calls a reusable workflow.
+/// A local reusable workflow: `./.github/workflows/<file>.yml` or `.yaml`.
+final RegExp _localWorkflow = RegExp(
+  r'^\./\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml$',
+);
+
+/// A remote reusable workflow:
+/// `owner/repo/.github/workflows/<file>.yml@<40 hex>` (or `.yaml`).
+final RegExp _remoteWorkflow = RegExp(
+  r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/\.github/workflows/'
+  r'[A-Za-z0-9_.-]+\.ya?ml@[0-9a-f]{40}$',
+);
+
+/// The expected form of a remote reusable workflow, for messages.
+const String _remoteForm = 'owner/repo/.github/workflows/<file>.yml (or .yaml)';
+
+/// Checks the `uses:` of a job that calls a reusable workflow (#45).
 ///
 /// Such a job cannot set `timeout-minutes`, so the called workflow must be
-/// linted too: a local `./.github/workflows/<file>` that is one of the linted
-/// workflows, or a remote workflow pinned by commit SHA.
+/// linted too. The only accepted forms are:
+/// - `./.github/workflows/<file>.yml` (or `.yaml`), one of the linted
+///   workflows;
+/// - `owner/repo/.github/workflows/<file>.yml@<40 hex>` (or `.yaml`),
+///   followed on its line by a `# v...` comment.
+///
+/// Anything else fails: `owner/repo@<sha>` without the workflow path, another
+/// path, a `docker://` image, `..`, `.` or empty segments, a trailing slash.
 void _lintWorkflowCall(YamlNode node, String source, _JobContext context) {
   final Object? value = node.value;
-  if (value is String && value.startsWith('./')) {
-    if (!context.localWorkflows.contains(value)) {
+  if (value is! String) {
+    context.report('uses must be a string.');
+    return;
+  }
+  if (value.startsWith('./')) {
+    if (!_localWorkflow.hasMatch(value) ||
+        !context.localWorkflows.contains(value)) {
       context.report(
-        'reusable workflow "$value" must be one of the linted workflows '
-        'in ./.github/workflows.',
+        'reusable workflow "$value" must be ./.github/workflows/<file>.yml '
+        '(or .yaml), one of the linted workflows.',
       );
     }
     return;
   }
-  if (value is String && value.startsWith('docker://')) {
-    context.report('a job-level uses: must call a workflow, not "$value".');
+  final List<String> path = value.split('@').first.split('/');
+  if (!_remoteWorkflow.hasMatch(value) || !_validSegments(path)) {
+    context.report(
+      'reusable workflow "$value" must be $_remoteForm pinned as '
+      '@<full 40-character commit SHA>.',
+    );
     return;
   }
   _lintUses(node, source, context.report);
