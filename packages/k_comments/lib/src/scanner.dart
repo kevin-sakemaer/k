@@ -29,7 +29,10 @@ enum CommentKind {
   unreadable('cannot read file as UTF-8'),
 
   /// A symbolic link whose target is missing or outside the scan root.
-  linkOutsideRoot('symbolic link target is missing or outside the scan root');
+  linkOutsideRoot('symbolic link target is missing or outside the scan root'),
+
+  /// A symbolic link with a `.dart` name whose target is a directory.
+  linkToDirectory('symbolic link points to a directory, not a Dart file');
 
   new(this.message);
 
@@ -171,7 +174,8 @@ CommentKind? _kindOf(String lexeme) {
 /// A symbolic link to a `.dart` file is followed: its target is scanned and
 /// reported under the link path when it is inside [root]. A link whose target
 /// is missing or outside [root] is reported as [CommentKind.linkOutsideRoot].
-/// Directory links are not followed.
+/// A link with a `.dart` name whose target is a directory is not followed and
+/// is reported as [CommentKind.linkToDirectory].
 ///
 /// Reported paths are relative to [root] and use `/` separators.
 List<CommentViolation> scanFiles(Directory root, CommentScanConfig config) {
@@ -206,6 +210,9 @@ List<CommentViolation> _scanEntity(
   }
   if (!p.isWithin(canonicalRoot, target)) {
     return <CommentViolation>[_atStart(path, CommentKind.linkOutsideRoot)];
+  }
+  if (FileSystemEntity.isDirectorySync(target)) {
+    return <CommentViolation>[_atStart(path, CommentKind.linkToDirectory)];
   }
   return _scanFile(File(target), path);
 }

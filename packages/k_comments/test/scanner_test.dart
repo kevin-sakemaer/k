@@ -219,6 +219,18 @@ void main() {
       ]);
     });
 
+    test('reports a .dart link that points to a directory', () {
+      Link('${root.path}/lib/dir.dart').createSync('${root.path}/gen');
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(include: <String>['lib/**'], exclude: <String>[]),
+      );
+      expect(found.map((v) => v.toString()), <String>[
+        'lib/a.dart:1:1: line comment is not allowed, use /// only',
+        'lib/dir.dart:1:1: symbolic link points to a directory, not a Dart file',
+      ]);
+    });
+
     test('reports files in path order', () {
       final List<CommentViolation> found = scanFiles(
         root,
