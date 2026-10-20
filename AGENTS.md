@@ -12,11 +12,32 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
   - dependency publishers: #4;
   - `k.yaml` validation: #10.
 
+## Pre-commit checklist
+Mandatory before every commit and push (#16). The Reviewer may reject without detailed review any PR failing one of these points.
+
+1. Branch rebased on up-to-date `origin/main`, containing no commits from other PRs.
+2. `dart format --set-exit-if-changed .`
+3. `dart analyze --fatal-infos` with zero diagnostics, including against the strictest analysis_options (#14).
+4. `dart test` with 100% coverage (or the k.yaml override).
+5. Same scripts as CI run locally (k_config, publishers check, comments check).
+6. Self-review of `git diff origin/main` against the issue acceptance criteria and Reviewer rules: English only, `///` comments only, no hard-coded values outside k.yaml.
+
+Points 2 to 5 live in a single script, `tool/check.sh`, which the `test` CI job also runs. Install the hooks once per clone:
+
+```bash
+tool/install_hooks.sh
+```
+
+- `pre-commit` runs `tool/check.sh --fast` (points 2, 3 and 5; tests and coverage are left to `pre-push`).
+- `pre-push` fetches `origin/main`, checks it is an ancestor of `HEAD` (point 1), then runs the full `tool/check.sh` (points 2 to 5).
+- Checks whose script is not on `main` yet (k_config #13, publishers #4, comments #9, coverage threshold from `k.yaml` #13) are skipped with an explicit message.
+- Point 6 stays manual.
+
 ## Workflow
 1. **One issue = one branch = one PR.** Never push directly to `main`.
 2. Open the PR referencing the issue (`Closes #N`).
 3. Required checks on `main`: **`test`** and **`review-gate`**.
-   - `test`: when `pubspec.yaml` exists, runs `dart pub get`, `dart format --set-exit-if-changed`, `dart analyze --fatal-infos` and `dart test`. It fails if there are no tests. Without `pubspec.yaml` it passes.
+   - `test`: runs `tool/check.sh` (see Pre-commit checklist). It always runs the review-gate script tests; when `pubspec.yaml` exists it also runs format, analyze, the repository scripts, tests and coverage, and fails if there are no tests.
    - `review-gate`: fails without the `review:approved` label or when `review:changes-requested` is present.
 4. **Reviewer verdict**: a comment on the PR **and** a label, `review:approved` or `review:changes-requested`. Before re-approving, the Reviewer removes `review:changes-requested`.
 5. **Every push** to the PR automatically removes `review:approved`, and `review-gate` turns red on the new commit. Removing a label with the workflow token does not trigger a new run, so the check **stays red until the Reviewer adds `review:approved` again**.

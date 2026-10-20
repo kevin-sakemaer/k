@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Checklist point 1 plus the full points 2 to 5 (issue #16).
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+remote="${1:-origin}"
+
+echo "==> branch contains up-to-date ${remote}/main"
+git fetch --quiet "$remote" main \
+  || { echo "FAIL: could not fetch ${remote}/main" >&2; exit 1; }
+if ! git merge-base --is-ancestor "${remote}/main" HEAD; then
+  echo "FAIL: HEAD does not contain ${remote}/main; rebase or merge it first." >&2
+  exit 1
+fi
+
+exec bash "$root/tool/check.sh"

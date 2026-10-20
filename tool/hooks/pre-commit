@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Fast checklist points 2, 3 and 5 (issue #16). Tests and coverage run in
+# pre-push to keep commits quick; see tool/check.sh.
+set -euo pipefail
+root="$(git rev-parse --show-toplevel)"
+exec bash "$root/tool/check.sh" --fast
