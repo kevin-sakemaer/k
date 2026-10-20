@@ -1,0 +1,62 @@
+# k_config
+
+Loads and strictly validates `k.yaml`, the global quality configuration at
+the repository root. Every quality check reads its settings through this
+package, so `k.yaml` is the single source of truth: no threshold or list may
+be hard-coded in a workflow or a script.
+
+## Usage
+
+```sh
+dart run packages/k_config/bin/k_config.dart [repository-root]
+```
+
+The command exits with code 1 and prints one line per error when `k.yaml` is
+invalid. When it is valid, it prints a Markdown summary of every active
+override and exception, and appends it to `$GITHUB_STEP_SUMMARY` when that
+variable is set. The required `k-config` CI check runs it on every pull
+request.
+
+Other checks read the typed values with `loadKConfig(Directory root)`.
+
+## Schema
+
+```yaml
+coverage:
+  default: 100              # Line coverage threshold in percent, 0 to 100.
+  overrides:                # Required, may be {}.
+    some_package:           # Must be a workspace package.
+      threshold: 95         # 0 to 100.
+      reason: "Why this package cannot reach the default."
+dependencies:
+  allowed_publishers:       # Non-empty list, no duplicates.
+    - dart.dev
+    - tools.dart.dev
+    - labs.dart.dev
+  exceptions:               # Required, may be {}.
+    some_pkg:               # Must be a direct dependency of the workspace.
+      reason: "Approved by Kevin on YYYY-MM-DD via Grok Bot."
+comments:
+  exceptions:               # Required, may be [].
+    - path: packages/foo/lib/vendored.dart   # Existing file, relative path.
+      reason: "Why this file needs non-documentation comments."
+```
+
+Validation fails on:
+
+- an unknown key, or a missing key, at any level;
+- a duplicated key, including a duplicated section;
+- a value of the wrong type;
+- a threshold outside 0 to 100;
+- a missing or blank `reason`;
+- a coverage override for a package that is not in the workspace;
+- a dependency exception for a package that is not a direct dependency;
+- a comment exception for a missing file, or a duplicated path.
+
+## Adding a section
+
+1. Add a typed class to `lib/src/model.dart` and a field to `KConfig`.
+2. Add the key to the root keys in `lib/src/parser.dart` and write its
+   parser with the strict helpers there.
+3. Render it in `lib/src/summary.dart`, add it to `k.yaml`, and cover every
+   invalid case in the tests.

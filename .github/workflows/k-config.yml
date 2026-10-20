@@ -1,0 +1,23 @@
+name: k-config
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  k-config:
+    name: k-config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - run: dart pub get
+      - name: Test the config tool
+        working-directory: packages/k_config
+        run: dart test
+      - name: Validate k.yaml
+        run: dart run packages/k_config/bin/k_config.dart
