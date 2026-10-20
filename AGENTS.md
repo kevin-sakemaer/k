@@ -9,7 +9,7 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
 - `k.yaml` at the repository root is the single source of configuration; nothing is hard-coded.
 - Every rule must live in a required CI check. Checks still to come, each tracked in its own issue and made required on `main` when done:
   - `///`-only comments: #9 (runs in the `test` check, settings in the `comments` section of k.yaml);
-  - dependency publishers: #4;
+  - dependency publishers: #4 (runs in the `test` check, exceptions in the `dependencies` section of k.yaml);
   - no closing keywords in partial PRs (Pre-commit checklist point 7): #26.
 
 ## Pre-commit checklist
@@ -39,7 +39,8 @@ tool/install_hooks.sh
 - `tool/check.sh` never parses `k.yaml`: it validates it with `k_config` (required: a missing `packages/k_config/bin/k_config.dart` fails the job), then reads each value through `dart run k_config --get <key>` (`coverage.thresholds`, `coverage.tool_version`). An invalid `k.yaml` fails the check. Coverage is never disabled.
 - Coverage counts every `lib/**/*.dart` file: a file that no test loads counts as 0%.
 - The comments check (#9) runs `dart run k_comments` (package `packages/k_comments`, #20). It reads `comments.include`, `comments.exclude` and `comments.exceptions` from k.yaml through `k_config`, and only `.dart` files are ever read. It fails on any `//` (including `////`, `// ignore:` and `// ignore_for_file:`), `/* */` or `/** */` comment, on an unterminated `/*`, on a file that is not valid UTF-8, on a `.dart` symbolic link that is broken, points outside the repository or points to a directory, and on a comment exception that is not needed. Each violation is reported as `path:line:column`, with the column counted in Unicode code points. Text inside string literals is never treated as a comment. `packages/k_comments/bin/k_comments.dart` is on `main`, so a missing checker always fails the job. A workspace package executable `packages/<name>/bin/<name>.dart` is run by package name, any other script by path.
-- Checks whose script is not on `main` yet (publishers #4 at `packages/k_publishers/bin/k_publishers.dart`; #4 may change that location) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
+- The publishers check (#4) runs `dart run k_publishers` (package `packages/k_publishers`). It reads the direct `dependencies` and `dev_dependencies` of the root pubspec and of every workspace member, skips workspace, `sdk` and `path` dependencies, and asks `https://pub.dev/api/packages/<name>/publisher` for each pub.dev package. It fails on a publisher outside `DependenciesConfig.allowedPublishers` (fixed in `k_config`), on a package without a verified publisher or unknown to pub.dev, on a `git` or non-pub.dev hosted dependency, on a lookup error, and on an exception from `dependencies.exceptions` that is not needed. Its tests never use the network: they inject a fake client or a loopback server.
+- Checks whose script is not on `main` yet are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
 - Points 6 to 9 stay manual (`review-gate` also enforces point 8).
 
 ## Workflow

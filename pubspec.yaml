@@ -9,6 +9,7 @@ workspace:
   - packages/k_comments
   - packages/k_config
   - packages/k_workflows
+  - packages/k_publishers
 
 dev_dependencies:
   test: ^1.25.0

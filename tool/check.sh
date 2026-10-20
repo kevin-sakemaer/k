@@ -142,7 +142,8 @@ threshold_of() {
 # the lcov report, so that local and CI runs use the same tool.
 coverage_version="$(kget coverage.tool_version)" || exit 1
 
-# TODO(#4): dependency publishers check; #4 may change this location.
+# Dependency publishers check (#4): exceptions come from k.yaml through
+# package:k_config, the allowed publishers are fixed in k_config.
 check_script "dependency publishers check" 4 "packages/k_publishers/bin/k_publishers.dart"
 
 # ///-only comments check (#9, package from #20), on main: always required.
