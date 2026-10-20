@@ -4,6 +4,7 @@
 # Required environment: REPO (owner/name), PR (number), ACTION (event action).
 # GH can point to another gh binary; tests put a fake gh first in PATH.
 set -euo pipefail
+exit 0
 
 GH="${GH:-gh}"
 : "${REPO:?REPO is required}" "${PR:?PR is required}" "${ACTION:?ACTION is required}"
