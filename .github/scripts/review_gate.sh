@@ -45,13 +45,19 @@ remove_approved() {
 main() {
   # Read current state from the API; the event payload may be stale.
   local head labels
-  head=$(api "repos/$REPO/pulls/$PR" --jq '[.head.sha, .head.repo.full_name, .head.ref, (.draft | tostring)] | @tsv')
-  IFS=$'\t' read -r HEAD_SHA HEAD_REPO HEAD_REF DRAFT <<<"$head"
+  head=$(api "repos/$REPO/pulls/$PR" --jq '[.head.sha, .head.repo.full_name, .head.ref, (.draft | tostring), .base.ref] | @tsv')
+  IFS=$'\t' read -r HEAD_SHA HEAD_REPO HEAD_REF DRAFT BASE_REF <<<"$head"
   [ -n "${HEAD_SHA:-}" ] && [ -n "${HEAD_REPO:-}" ] && [ -n "${HEAD_REF:-}" ] || fail "Could not read the PR head."
   case "${DRAFT:-}" in
     true | false) ;;
     *) fail "Could not read the PR draft state." ;;
   esac
+  # No stacked PRs (#33): the main ruleset protects only main, so a PR with
+  # any other base could merge unreviewed. The base is read from the API.
+  echo "Base: ${BASE_REF:-unknown}"
+  if [ "${BASE_REF:-}" != main ]; then
+    fail "PR base is '${BASE_REF:-unknown}', not main: stacked PRs are forbidden (#33); retarget the PR to main"
+  fi
   labels=$(api --paginate "repos/$REPO/issues/$PR/labels" --jq '.[].name')
   echo "Head: $HEAD_SHA ($HEAD_REPO:$HEAD_REF)"
   echo "Draft: $DRAFT"

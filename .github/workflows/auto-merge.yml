@@ -1,13 +1,19 @@
 name: auto-merge
 
-# Enables squash auto-merge on every PR. pull_request_target runs in the
+# Enables squash auto-merge on PRs to main. pull_request_target runs in the
 # context of the base branch; the PR head is never checked out.
-# The `labeled` trigger (review:approved only) re-enables auto-merge on PRs
-# opened before this workflow or where auto-merge was disabled. Running
-# `gh pr merge --auto` again is harmless.
+# The `labeled` trigger (review:approved only, checked by the script)
+# re-enables auto-merge on PRs opened before this workflow or where
+# auto-merge was disabled. Running `gh pr merge --auto` again is harmless.
+# Only PRs whose base is main (#33): the main ruleset protects only main, so
+# auto-merge on any other base would merge with no review. The job runs on
+# every base and event with no job-level `if`: a pending run can be replaced
+# in the concurrency group, so a skipped run must never supersede one that
+# disables. auto_merge.sh enables on main and disables on any other base.
+# `edited` catches a base change after auto-merge was enabled.
 on:
   pull_request_target:
-    types: [opened, reopened, ready_for_review, labeled]
+    types: [opened, reopened, ready_for_review, labeled, edited]
 
 permissions: {}
 
@@ -17,17 +23,26 @@ concurrency:
 
 jobs:
   auto-merge:
-    if: ${{ !github.event.pull_request.draft && (github.event.action != 'labeled' || github.event.label.name == 'review:approved') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - name: Enable auto-merge (squash)
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Base-branch tip under pull_request_target, never the PR head.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Enable or disable auto-merge
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-        run: gh pr merge "$PR" --auto --squash
+          BASE: ${{ github.event.pull_request.base.ref }}
+          ACTION: ${{ github.event.action }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          LABEL: ${{ github.event.label.name }}
+        run: bash .github/scripts/auto_merge.sh
