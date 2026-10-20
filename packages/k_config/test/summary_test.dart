@@ -24,6 +24,8 @@ void main() {
           },
         ),
         comments: CommentsConfig(
+          include: ['**.dart'],
+          exclude: [],
           exceptions: [
             CommentException(path: 'lib/legacy.dart', reason: 'Vendored.'),
           ],
@@ -70,7 +72,11 @@ Allowed publishers: dart.dev, tools.dart.dev, labs.dart.dev.
           toolVersion: '1.16.0',
         ),
         dependencies: DependenciesConfig(exceptions: {}),
-        comments: CommentsConfig(exceptions: []),
+        comments: CommentsConfig(
+          include: ['**.dart'],
+          exclude: [],
+          exceptions: [],
+        ),
       );
 
       final String summary = renderSummary(config);

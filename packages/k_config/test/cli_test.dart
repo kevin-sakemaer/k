@@ -111,7 +111,7 @@ void main() {
         const source =
             'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
             'dependencies: {exceptions: {}}\n'
-            'comments: {exceptions: []}\n';
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n';
         final String root = createRepository(files: {'k.yaml': source}).path;
 
         expect(
