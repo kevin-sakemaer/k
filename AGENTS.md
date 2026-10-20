@@ -10,7 +10,8 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
 - Every rule must live in a required CI check. Checks still to come, each tracked in its own issue and made required on `main` when done:
   - `///`-only comments: #9;
   - dependency publishers: #4;
-  - `k.yaml` validation: #10.
+  - `k.yaml` validation: #10;
+  - no closing keywords in partial PRs (Pre-commit checklist point 7): #26.
 
 ## Pre-commit checklist
 Mandatory before every commit and push (#16). The Reviewer may reject without detailed review any PR failing one of these points.
@@ -21,6 +22,7 @@ Mandatory before every commit and push (#16). The Reviewer may reject without de
 4. `dart test` with 100% coverage (or the k.yaml override).
 5. Same scripts as CI run locally (k_config, publishers check, comments check).
 6. Self-review of `git diff origin/main` against the issue acceptance criteria and Reviewer rules: English only, `///` comments only, no hard-coded values outside k.yaml.
+7. Issue references: a partial PR (`Part of #N` or `Refs #N`) contains no closing keyword for that issue anywhere (title, description, commit messages): no `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` or `resolved` followed by `#N`. `Closes #N` is allowed only when the PR fully delivers issue #N.
 
 Points 2 to 5 live in a single script, `tool/check.sh`, which the `test` CI job also runs; `tool/check_test.sh` tests it. Install the hooks once per clone:
 
@@ -35,12 +37,12 @@ tool/install_hooks.sh
 - Coverage threshold: `coverage.default` in `k.yaml`, a YAML integer from 0 to 100. If `k.yaml` or `coverage.default` is missing, the threshold defaults to **100%** and the check still fails (`k.yaml with coverage.default is required; defaulting to 100%`). Coverage is never disabled.
 - Coverage counts every `lib/**/*.dart` file: a file that no test loads counts as 0%.
 - Checks whose script is not on `main` yet (k_config #13, publishers #4, comments #9) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
-- Point 6 stays manual.
+- Points 6 and 7 stay manual.
 
 ## Workflow
 1. **One issue = one branch = one PR.** Never push directly to `main`.
-2. Open the PR referencing the issue (`Closes #N`).
-3. Required checks on `main`: **`test`** and **`review-gate`**.
+2. Open the PR referencing the issue: `Closes #N` only if the PR fully delivers the issue; otherwise `Part of #N` or `Refs #N`, with no closing keyword (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved` followed by `#N`) anywhere in the title, description or commit messages (see Pre-commit checklist point 7).
+3. Required checks on `main`: **`test`**, **`review-gate`** and **`github-guard`**.
    - `test`: runs `tool/check.sh` (see Pre-commit checklist). It always runs the review-gate script tests; it fails if `pubspec.yaml` is missing, then runs format, analyze, the repository scripts, tests and coverage, and fails if any workspace package has no tests or no member package is tested.
    - `review-gate`: fails without the `review:approved` label or when `review:changes-requested` is present.
 4. **Reviewer verdict**: a comment on the PR **and** a label, `review:approved` or `review:changes-requested`. Before re-approving, the Reviewer removes `review:changes-requested`.
@@ -52,19 +54,18 @@ tool/install_hooks.sh
    - The fallback push time is the latest of the `head_ref_force_pushed`, `reopened` and `head_ref_restored` events and the first workflow run for the head SHA. It is used only when the activity API answers an access 403 or 404. A rate-limit 403 fails the job; re-run it later.
    - `synchronize` and `reopened` runs each get their own concurrency group, so a label event can never cancel them.
    - Re-running an old `review-gate` run stays red: a re-run reuses its original event (and that event's labels), so it cannot see a label added later. To unblock a PR, add `review:approved` again; do not re-run the job.
-   - Fork PRs: under `pull_request_target` the token has the permissions declared in the workflow, even on fork PRs, so both gates can remove their label automatically. Only during the transition, the temporary `pull_request` run of `review-gate` gets a read-only token on fork PRs and fails with a clear message; the Reviewer then removes the label by hand.
-   - `review-gate` runs on `pull_request_target`: the workflow and `.github/scripts/review_gate.sh` always come from the base branch (`main`), never from the PR head, so a PR cannot change the gate that checks it (#15). A change to the gate only takes effect once merged. During the transition (#15 follow-up) `review-gate` also runs on `pull_request`, still with base-branch scripts only; that temporary trigger is removed in a follow-up PR.
+   - Fork PRs: under `pull_request_target` the token has the permissions declared in the workflow, even on fork PRs, so both gates can remove their label automatically.
+   - `review-gate` runs on `pull_request_target`: the workflow and `.github/scripts/review_gate.sh` always come from the base branch (`main`), never from the PR head, so a PR cannot change the gate that checks it (#15). A change to the gate only takes effect once merged.
    - `github-guard` (workflow `.github/workflows/github-guard.yml`, job `github-guard`, also on `pull_request_target`, base-branch code only) fails when the PR changes, adds, deletes or renames a protected path: anything under `.github/`, `tool/check.sh`, `tool/*_test.sh`, `tool/hooks/`, and `analysis_options.yaml` or `k.yaml` at any depth (the gate itself; the analyzer uses the nearest `analysis_options.yaml`; the `test` check runs head code, so these files could otherwise weaken the check of the PR that edits them). It passes only with the label `ci:github-change-approved`, and only if that label is fresh: its latest `labeled` event must be newer than the push of the current head, with the same rule and fallback as `review-gate` (shared helper `.github/scripts/freshness.sh`). A stale label is removed. Every push (and reopen) also removes it. The job fails closed when the listed files do not match the PR's `changed_files` count. The logic lives in `.github/scripts/github_guard.sh`, tested by `.github/scripts/github_guard_test.sh`. The protected paths and the label are hard-coded in the script on purpose, not in k.yaml.
-   - Everyone shares one GitHub account, so anyone can add `ci:github-change-approved`: it is meaningful only as an explicit, fresh second acknowledgment by the Reviewer. That is why the freshness rule is essential.
-   - Rollout order (#15): PR #19 merges first, then `github-guard` is added to the `main` ruleset's required checks right away (until then it is advisory only), then #18 (`auto-merge.yml`) merges. #18 must not merge earlier: with auto-merge on every PR, a protected change would merge as soon as `review:approved` is set. Both PRs edit these AGENTS.md lines, so #18 will need a conflict resolution.
-   - Transition risk: under the temporary `pull_request` trigger, the **workflow file** comes from the PR merge commit (only the script is checked out from the base). A PR can therefore edit `review-gate.yml` (for example `run: exit 0`) and produce a green check named `review-gate` next to the red `pull_request_target` one, and same-repo PRs get the write token the job declares. The transition is safe **only after** `github-guard` is required, because editing that file then needs the fresh label. The follow-up PR removing the `pull_request` trigger of `review-gate` (`TODO(#15 follow-up)`) must be opened and merged right after #19 merges.
+   - Everyone shares one GitHub account, so anyone can add `ci:github-change-approved`: it is meaningful only as an explicit, fresh second acknowledgment. Only the Lead adds it, after the Reviewer's `review:approved` and the Lead's own review of the diff. That is why the freshness rule is essential.
+   - Rollout (#15): `github-guard` is a required check on `main` since #19 merged, so #18 (`auto-merge.yml`) may merge; it must keep `github-guard` required. #18 edits these AGENTS.md lines, so it needs a conflict resolution.
 6. **Auto-merge**: the dev runs `gh pr merge --auto --squash`. The PR merges by itself when the Reviewer adds `review:approved` and every required check is green.
 7. **Resolve every review thread.** The ruleset requires all review threads to be resolved: the author resolves each of their threads (after fixing or answering it), otherwise an approved PR with green checks does not merge.
 8. **Nobody merges by hand.** The only exception is the bootstrap: the PRs for #1 and #2 are merged once by hand after the Reviewer's verdict.
 
 ## Current status (#2)
 - Done: squash merge only, branches deleted after merge, auto-merge enabled.
-- The `main` ruleset is active: PR required, squash only, 0 approvals, resolved threads, strict required checks `test` and `review-gate`, no force-push, no deletion, no bypass. Direct pushes to `main` are rejected.
+- The `main` ruleset is active: PR required, squash only, 0 approvals, resolved threads, strict required checks `test`, `review-gate` and `github-guard`, no force-push, no deletion, no bypass. Direct pushes to `main` are rejected.
 
 ## Dependencies
 - **Direct** dependencies are allowed only if their verified publisher on pub.dev is `dart.dev`, `tools.dart.dev` or `labs.dart.dev`.
