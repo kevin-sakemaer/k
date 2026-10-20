@@ -83,6 +83,33 @@ void main() {
       );
     });
 
+    test('reports //// as a line comment', () {
+      expect(kinds('//// four\nvoid f() {}\n'), <CommentKind>[
+        CommentKind.line,
+      ]);
+      expect(kinds('/////\nvoid f() {}\n'), <CommentKind>[CommentKind.line]);
+    });
+
+    test('reports an unterminated block comment', () {
+      final List<CommentViolation> found = findViolations(
+        'void f() {}\n/* never closed',
+        'a.dart',
+      );
+      expect(found.map((v) => v.kind), <CommentKind>[
+        CommentKind.unterminatedBlock,
+      ]);
+      expect(found.single.toString(), startsWith('a.dart:2:'));
+      expect(found.single.toString(), endsWith('unterminated block comment'));
+    });
+
+    test('counts columns in Unicode code points', () {
+      final List<CommentViolation> found = findViolations(
+        "var s = '\u{1F600}'; // x\n",
+        'a.dart',
+      );
+      expect(found.single.column, 14);
+    });
+
     test('does not fail on invalid code', () {
       expect(kinds('void f( {\n// x\n'), <CommentKind>[CommentKind.line]);
     });
@@ -115,6 +142,28 @@ void main() {
       );
       expect(found.map((v) => v.toString()), <String>[
         'lib/a.dart:1:1: line comment is not allowed, use /// only',
+      ]);
+    });
+
+    test('never scans non-Dart files, even with a broad glob', () {
+      File('${root.path}/a.yaml').writeAsStringSync('url: https://pub.dev\n');
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(include: <String>['**'], exclude: <String>['gen/**']),
+      );
+      expect(found.map((v) => v.path), <String>['lib/a.dart']);
+    });
+
+    test('reports a file that is not valid UTF-8', () {
+      File('${root.path}/lib/bad.dart')
+          .writeAsBytesSync(<int>[0xff, 0xfe, 0x00]);
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(include: <String>['lib/**'], exclude: <String>[]),
+      );
+      expect(found.map((v) => v.toString()), <String>[
+        'lib/a.dart:1:1: line comment is not allowed, use /// only',
+        'lib/bad.dart:1:1: cannot read file as UTF-8',
       ]);
     });
 

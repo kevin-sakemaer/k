@@ -6,8 +6,9 @@ import 'package:k_comments/src/scanner.dart';
 
 /// Runs the command line tool and returns its exit code.
 ///
-/// Exit codes: 0 when no forbidden comment is found, 1 when at least one is
-/// found, 64 on a usage error. Violations are written to [out], usage errors
+/// Exit codes: 0 when no violation is found, 1 when at least one is found
+/// (a forbidden or unterminated comment, or a file that is not valid UTF-8),
+/// 64 on a usage error. Violations are written to [out], usage errors
 /// to [err].
 int runCli(List<String> arguments, StringSink out, StringSink err) {
   final parser = ArgParser()
