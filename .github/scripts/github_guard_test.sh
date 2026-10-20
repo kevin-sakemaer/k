@@ -161,6 +161,27 @@ check 0 "No protected path changed."
 new_case "other tool files are not protected" opened "tool/install_hooks.sh"
 check 0 "No protected path changed."
 
+for p in packages/k_comments/lib/src/check.dart packages/k_config/lib/k_config.dart packages/k_publishers/bin/k_publishers.dart packages/k_workflows/pubspec.yaml; do
+  new_case "checker package file $p without label fails" opened "$p lib/a.dart"
+  check 1 "  $p"
+done
+
+new_case "checker package with fresh label passes" labeled "packages/k_config/lib/src/parser.dart" "$L"
+fresh
+check 0 "Approved by label" kept
+
+new_case "deleting a checker package test without label fails" opened "packages/k_comments/test/cli_test.dart"
+check 1 "  packages/k_comments/test/cli_test.dart"
+
+new_case "renaming a file out of a checker package without label fails" opened "packages/other/a.dart:packages/k_publishers/lib/a.dart"
+check 1 "  packages/k_publishers/lib/a.dart"
+
+new_case "packages outside the checker list are not protected" opened "packages/k_core/lib/k_core.dart packages/other/lib/a.dart"
+check 0 "No protected path changed."
+
+new_case "misleading checker prefixes are not protected" opened "packages/k_config_extra/lib/a.dart packages/k_comments2/a.dart packages/k_publishers.md packages/k_workflows_old/x.dart other/packages/k_config/a.dart"
+check 0 "No protected path changed."
+
 new_case "fresh label passes" labeled ".github/CODEOWNERS" "$L"
 fresh
 check 0 "Approved by label" kept
