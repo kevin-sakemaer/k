@@ -33,6 +33,7 @@ void main() {
       };
 
       expect(config.coverage.defaultThreshold, 100);
+      expect(config.coverage.toolVersion, '1.16.0');
       expect(config.coverage.thresholdFor('alpha'), 95);
       expect(config.coverage.thresholdFor('beta'), 100);
       expect(
@@ -58,7 +59,7 @@ void main() {
 
     test('accepts empty overrides and exceptions', () {
       const source = '''
-coverage: {default: 100, overrides: {}}
+coverage: {default: 100, overrides: {}, tool_version: 1.16.0}
 dependencies: {exceptions: {}}
 comments: {exceptions: []}
 ''';
@@ -102,7 +103,7 @@ comments: {exceptions: []}
         [
           message(
             'k.yaml: coverage.branches: unknown key. Allowed keys: '
-            'default, overrides.',
+            'default, overrides, tool_version.',
           ),
         ],
       ),
@@ -125,8 +126,48 @@ comments: {exceptions: []}
           ),
         ],
       ),
+      'a missing tool version': (
+        edit('  tool_version: 1.16.0\n', ''),
+        ['k.yaml: coverage.tool_version: missing required key.'],
+      ),
+      'a tool version that is not a string': (
+        edit('tool_version: 1.16.0', 'tool_version: 1.16'),
+        [
+          message(
+            'k.yaml: coverage.tool_version: must be an exact version '
+            'MAJOR.MINOR.PATCH as a string, found 1.16.',
+          ),
+        ],
+      ),
+      'a tool version range': (
+        edit('tool_version: 1.16.0', 'tool_version: "^1.16.0"'),
+        [
+          message(
+            'k.yaml: coverage.tool_version: must be an exact version '
+            'MAJOR.MINOR.PATCH as a string, found "^1.16.0".',
+          ),
+        ],
+      ),
+      'a prerelease tool version': (
+        edit('tool_version: 1.16.0', 'tool_version: 1.16.0-dev'),
+        [
+          message(
+            'k.yaml: coverage.tool_version: must be an exact version '
+            'MAJOR.MINOR.PATCH as a string, found "1.16.0-dev".',
+          ),
+        ],
+      ),
+      'a tool version with a leading zero': (
+        edit('tool_version: 1.16.0', 'tool_version: "01.16.0"'),
+        [
+          message(
+            'k.yaml: coverage.tool_version: must be an exact version '
+            'MAJOR.MINOR.PATCH as a string, found "01.16.0".',
+          ),
+        ],
+      ),
       'a missing overrides key': (
-        'coverage: {default: 100}\n'
+        'coverage: {default: 100, tool_version: 1.16.0}\n'
             'dependencies: {exceptions: {}}\n'
             'comments: {exceptions: []}\n',
         ['k.yaml: coverage.overrides: missing required key.'],
@@ -180,7 +221,7 @@ comments: {exceptions: []}
           'k.yaml: coverage.overrides: must be a mapping.',
           message(
             'k.yaml: coverage.unused: unknown key. Allowed keys: '
-            'default, overrides.',
+            'default, overrides, tool_version.',
           ),
         ],
       ),
@@ -279,13 +320,13 @@ comments: {exceptions: []}
         ['k.yaml: dependencies.exceptions.third_party: must be a mapping.'],
       ),
       'dependency exceptions that are not a mapping': (
-        'coverage: {default: 100, overrides: {}}\n'
+        'coverage: {default: 100, overrides: {}, tool_version: 1.16.0}\n'
             'dependencies: {exceptions: []}\n'
             'comments: {exceptions: []}\n',
         ['k.yaml: dependencies.exceptions: must be a mapping.'],
       ),
       'a dependencies section that is not a mapping': (
-        'coverage: {default: 100, overrides: {}}\n'
+        'coverage: {default: 100, overrides: {}, tool_version: 1.16.0}\n'
             'dependencies: []\n'
             'comments: {exceptions: []}\n',
         ['k.yaml: dependencies: must be a mapping.'],

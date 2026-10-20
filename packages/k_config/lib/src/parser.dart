@@ -113,6 +113,7 @@ final class _Validator {
     final Map<String, Object?>? map = strictMap(value, path, const {
       'default',
       'overrides',
+      'tool_version',
     });
     if (map == null) {
       return null;
@@ -124,7 +125,8 @@ final class _Validator {
       'overrides',
       (value, path) => entries(value, path, coverageOverride),
     );
-    if (defaultThreshold == null || overrides == null) {
+    final String? toolVersion = field(map, path, 'tool_version', semver);
+    if (defaultThreshold == null || overrides == null || toolVersion == null) {
       return null;
     }
     for (final MapEntry(:key, :value) in overrides.entries) {
@@ -139,7 +141,25 @@ final class _Validator {
     return CoverageConfig(
       defaultThreshold: defaultThreshold,
       overrides: overrides,
+      toolVersion: toolVersion,
     );
+  }
+
+  /// Exact version without range, prerelease or build suffix.
+  static final RegExp _semver = RegExp(
+    r'^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$',
+  );
+
+  String? semver(Object? value, String path) {
+    if (value is! String || !_semver.hasMatch(value)) {
+      error(
+        path,
+        'must be an exact version MAJOR.MINOR.PATCH as a string, '
+        'found ${value is String ? '"$value"' : value}.',
+      );
+      return null;
+    }
+    return value;
   }
 
   CoverageOverride? coverageOverride(String name, Object? value, String path) {

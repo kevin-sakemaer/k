@@ -9,6 +9,7 @@ import 'package:test/test.dart';
 const validConfig = '''
 coverage:
   default: 100
+  tool_version: 1.16.0
   overrides:
     alpha:
       threshold: 95

@@ -17,6 +17,8 @@ String renderSummary(KConfig config) {
       'Default line coverage threshold: '
       '${config.coverage.defaultThreshold}%.',
     )
+    ..writeln()
+    ..writeln('Coverage tool: package:coverage ${config.coverage.toolVersion}.')
     ..writeln();
   _table(
     buffer,

@@ -5,6 +5,7 @@
 # See AGENTS.md for the schema.
 coverage:
   default: 100
+  tool_version: 1.16.0
   overrides: {}
 dependencies:
   exceptions: {}

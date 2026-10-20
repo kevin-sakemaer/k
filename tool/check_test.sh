@@ -77,7 +77,7 @@ new_repo() {
   mkdir -p "$d/tool" "$d/packages/a/lib" "$d/packages/a/test"
   cp "$check" "$d/tool/check.sh"
   printf 'name: ws\nworkspace:\n  - packages/a\n' >"$d/pubspec.yaml"
-  printf 'coverage:\n  default: 100\n  overrides: {}\n' >"$d/k.yaml"
+  printf 'coverage:\n  default: 100\n  overrides: {}\n  tool_version: 1.16.0\n' >"$d/k.yaml"
   printf '.\npackages/a\n' >"$d/.fake_ws"
   printf 'int one() {\n  return 1;\n}\n' >"$d/packages/a/lib/a.dart"
   printf 'void main() {}\n' >"$d/packages/a/test/a_test.dart"
@@ -130,7 +130,7 @@ expect "workspace root with lib/ and no tests fails" 1 "package . has no test" "
 # Blocking 2: threshold validation.
 for bad in '"100"' "'100'" abc 101 100.0 -1 '' 1e2; do
   r="$(new_repo)"
-  printf 'coverage:\n  default: %s\n' "$bad" >"$r/k.yaml"
+  printf 'coverage:\n  tool_version: 1.16.0\n  default: %s\n' "$bad" >"$r/k.yaml"
   if [ -z "$bad" ]; then
     expect "empty coverage.default fails" 1 "coverage.default is required" "$r"
   else
@@ -139,28 +139,38 @@ for bad in '"100"' "'100'" abc 101 100.0 -1 '' 1e2; do
 done
 
 r="$(new_repo)"
-printf 'coverage:\n  default: 50 # comment\n' >"$r/k.yaml"
+printf 'coverage:\n  default: 50 # comment\n  tool_version: 1.16.0\n' >"$r/k.yaml"
 printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
 expect "integer threshold with a comment is used" 0 "required 50%" "$r"
 
 r="$(new_repo)"
-printf 'coverage:\n  default: 100\n' >"$r/k.yaml"
+printf 'coverage:\n  default: 100\n  tool_version: 1.16.0\n' >"$r/k.yaml"
 printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
 expect "coverage below the threshold fails" 1 "below the threshold 100%" "$r"
 
-# Blocking 3: k.yaml and coverage.default are required.
+# Blocking 3: k.yaml, coverage.default and coverage.tool_version are required.
 r="$(new_repo)"
 rm "$r/k.yaml"
-expect "missing k.yaml fails with a 100% default" 1 \
-  "k.yaml with coverage.default is required; defaulting to 100%" "$r"
+expect "missing k.yaml fails" 1 \
+  "coverage.tool_version must be an exact version MAJOR.MINOR.PATCH, got: <missing>" "$r"
 
 r="$(new_repo)"
-rm "$r/k.yaml"
-printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.lcov"
-expect "missing k.yaml still enforces 100%" 1 "below the threshold 100%" "$r"
+printf 'coverage:\n  default: 100\n  overrides: {}\n' >"$r/k.yaml"
+expect "missing coverage.tool_version fails" 1 \
+  "coverage.tool_version must be an exact version MAJOR.MINOR.PATCH, got: <missing>" "$r"
+
+for bad in '^1.16.0' '1.16' '1.16.0-dev' '01.16.0'; do
+  r="$(new_repo)"
+  printf 'coverage:\n  default: 100\n  tool_version: %s\n' "$bad" >"$r/k.yaml"
+  expect "coverage.tool_version $bad is rejected" 1 "got: $bad" "$r"
+done
 
 r="$(new_repo)"
-printf 'coverage:\n  overrides: {}\ncomments:\n  default: 0\n' >"$r/k.yaml"
+printf 'coverage:\n  default: 100\n  tool_version: "1.16.0" # pinned\n' >"$r/k.yaml"
+expect "quoted coverage.tool_version with a comment is used" 0 "All checks passed." "$r"
+
+r="$(new_repo)"
+printf 'coverage:\n  overrides: {}\n  tool_version: 1.16.0\ncomments:\n  default: 0\n' >"$r/k.yaml"
 expect "missing coverage.default fails" 1 \
   "k.yaml with coverage.default is required; defaulting to 100%" "$r"
 
