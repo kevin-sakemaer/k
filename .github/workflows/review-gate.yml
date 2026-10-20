@@ -4,14 +4,18 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
+permissions: {}
+
+# Never cancel: a cancelled synchronize run could leave review:approved in place.
+concurrency:
+  group: review-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 
 jobs:
   review-gate:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - name: Check review labels
         env:
@@ -26,7 +30,11 @@ jobs:
 
           if [ "$ACTION" = "synchronize" ] && echo "$labels" | grep -qx 'review:approved'; then
             # A 404 means the label is already gone: not an error.
-            if ! out=$(gh api -X DELETE "repos/$REPO/issues/$PR/labels/review:approved" 2>&1); then
+            if ! out=$(gh api -X DELETE "repos/$REPO/issues/$PR/labels/review%3Aapproved" 2>&1); then
+              if echo "$out" | grep -q 'HTTP 403'; then
+                echo "::error::Cannot remove review:approved: read-only token (fork PR?). Ask the Reviewer to remove it."
+                exit 1
+              fi
               if ! echo "$out" | grep -q 'HTTP 404'; then
                 echo "$out"
                 echo "::error::Failed to remove review:approved."
