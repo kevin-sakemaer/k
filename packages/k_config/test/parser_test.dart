@@ -68,12 +68,41 @@ comments: {exceptions: []}
     });
 
     test('accepts the bounds 0 and 100', () {
+      const empty =
+          'dependencies: {exceptions: {}}\n'
+          'comments: {exceptions: []}\n';
+      for (final bound in [0, 100]) {
+        final source =
+            'coverage: {default: $bound, tool_version: 1.16.0, overrides: {}}\n'
+            '$empty';
+        final KConfig config = switch (parse(source)) {
+          KConfigValid(:final KConfig config) => config,
+          KConfigInvalid(:final List<String> errors) => fail('$bound: $errors'),
+        };
+        expect(config.coverage.defaultThreshold, bound);
+        expect(config.coverage.thresholdFor('alpha'), bound);
+      }
+      final KConfig config = switch (parse(
+        edit('threshold: 95', 'threshold: 0'),
+      )) {
+        KConfigValid(:final KConfig config) => config,
+        KConfigInvalid(:final List<String> errors) => fail('$errors'),
+      };
+      expect(config.coverage.thresholdFor('alpha'), 0);
+      expect(config.coverage.defaultThreshold, 100);
+    });
+
+    test('rejects an override of 0 when coverage.default is 0', () {
       final String source = edit(
         'default: 100',
         'default: 0',
       ).replaceFirst('threshold: 95', 'threshold: 0');
-      expect(parse(source), isA<KConfigInvalid>());
-      expect(parse(edit('threshold: 95', 'threshold: 0')), isA<KConfigValid>());
+      expect(errorsOf(source), [
+        message(
+          'k.yaml: coverage.overrides.alpha.threshold: '
+          'must be lower than coverage.default (0), found 0.',
+        ),
+      ]);
     });
 
     final failures = <String, (String, List<String>)>{
