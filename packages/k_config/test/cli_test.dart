@@ -5,6 +5,9 @@ import 'package:test/test.dart';
 
 import 'support/fixture.dart';
 
+/// Usage line printed on a usage error.
+const usage = 'Usage: k_config [--get <key>] [repository-root]';
+
 void main() {
   group('runCli', () {
     late StringBuffer out;
@@ -78,7 +81,78 @@ void main() {
 
     test('rejects extra arguments', () {
       expect(runCli(const ['a', 'b'], out: out, err: err), 64);
-      expect(err.toString(), 'Usage: k_config [repository-root]\n');
+      expect(err.toString(), '$usage\n');
+    });
+
+    test('rejects an unknown option', () {
+      expect(runCli(const ['--set'], out: out, err: err), 64);
+      expect(err.toString(), '$usage\n');
+    });
+
+    group('--get', () {
+      test('prints only the validated value', () {
+        final String root = createRepository().path;
+
+        expect(
+          runCli(['--get', 'coverage.default', root], out: out, err: err),
+          0,
+        );
+        expect(
+          runCli(['--get', 'coverage.tool_version', root], out: out, err: err),
+          0,
+        );
+        expect(out.toString(), '100\n1.16.0\n');
+        expect(err.toString(), isEmpty);
+      });
+
+      test('reads a flow style coverage section', () {
+        const source =
+            'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
+            'dependencies: {exceptions: {}}\n'
+            'comments: {exceptions: []}\n';
+        final String root = createRepository(files: {'k.yaml': source}).path;
+
+        expect(
+          runCli(['--get', 'coverage.tool_version', root], out: out, err: err),
+          0,
+        );
+        expect(out.toString(), '1.16.0\n');
+      });
+
+      test('fails on an unbalanced quote', () {
+        final String root = createRepository(
+          files: {
+            'k.yaml': validConfig.replaceFirst(
+              'tool_version: 1.16.0',
+              'tool_version: "1.16.0',
+            ),
+          },
+        ).path;
+
+        final int code = runCli(
+          ['--get', 'coverage.tool_version', root],
+          out: out,
+          err: err,
+        );
+
+        expect(code, 1);
+        expect(out.toString(), isEmpty);
+        expect(err.toString(), contains('invalid YAML'));
+      });
+
+      test('fails on an unsupported key', () {
+        expect(runCli(const ['--get', 'coverage'], out: out, err: err), 64);
+        expect(
+          err.toString(),
+          'k_config: unsupported key "coverage" for --get. Supported keys: '
+          'coverage.default, coverage.tool_version.\n',
+        );
+      });
+
+      test('fails without a key', () {
+        expect(runCli(const ['--get'], out: out, err: err), 64);
+        expect(err.toString(), '$usage\n');
+      });
     });
   });
 }
