@@ -7,6 +7,7 @@ import 'package:test/test.dart';
 String kYaml(String comments) =>
     'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
     'dependencies: {exceptions: {}}\n'
+    'close_issues: {lookback_hours: 72}\n'
     'comments: $comments\n';
 
 void main() {

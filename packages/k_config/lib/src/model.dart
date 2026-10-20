@@ -8,6 +8,7 @@ final class KConfig {
     required this.coverage,
     required this.dependencies,
     required this.comments,
+    required this.closeIssues,
   });
 
   /// Settings of the coverage check.
@@ -18,6 +19,9 @@ final class KConfig {
 
   /// Settings of the Dart comment check.
   final CommentsConfig comments;
+
+  /// Settings of the scheduled `close-issues` sweep.
+  final CloseIssuesConfig closeIssues;
 }
 
 /// Settings of the coverage check.
@@ -142,4 +146,16 @@ final class CommentException {
 
   /// Why the file needs non-documentation comments.
   final String reason;
+}
+
+/// Settings of the scheduled `close-issues` sweep (#40).
+final class CloseIssuesConfig {
+  /// Creates sweep settings.
+  const new({required this.lookbackHours});
+
+  /// Largest accepted value of [lookbackHours]: 30 days.
+  static const int maxLookbackHours = 720;
+
+  /// How far back, in hours, the sweep looks for PRs merged into `main`.
+  final int lookbackHours;
 }

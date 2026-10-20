@@ -59,6 +59,14 @@ String renderSummary(KConfig config) {
         [exception.path, exception.reason],
     ],
   );
+  buffer
+    ..writeln('### Closing issues')
+    ..writeln()
+    ..writeln(
+      'Look-back window of the close-issues sweep: '
+      '${config.closeIssues.lookbackHours} hours.',
+    )
+    ..writeln();
   return buffer.toString();
 }
 

@@ -10,6 +10,8 @@ coverage:
   overrides: {}
 dependencies:
   exceptions: {}
+close_issues:
+  lookback_hours: 72
 comments:
   include:
     - "**.dart"

@@ -20,7 +20,8 @@ writes the job summary.
 
 `dart run packages/k_config/bin/k_config.dart --get <key> [repository-root]`
 prints only the validated value of `<key>`: `coverage.default`,
-`coverage.tool_version`, or `coverage.thresholds`. The last one prints one
+`coverage.tool_version`, `close_issues.lookback_hours`, or
+`coverage.thresholds`. The last one prints one
 `<package>\t<threshold>` line per workspace package, the root included: its
 override, or `coverage.default`. The command exits with code 1 when `k.yaml`
 is invalid, or 64 for an unsupported key. Scripts use it instead of parsing
@@ -64,6 +65,8 @@ Validation fails on:
 - a threshold that is not a plain decimal integer from 0 to 100 (no
   decimal, exponent, hexadecimal, octal, sign, separator, leading zero,
   string or boolean);
+- a `close_issues.lookback_hours` that is not a plain decimal integer from 1
+  to 720;
 - a `coverage.tool_version` that is not an exact `MAJOR.MINOR.PATCH` string;
 - a missing or blank `reason`;
 - a coverage override for a package that is not in the workspace, or whose

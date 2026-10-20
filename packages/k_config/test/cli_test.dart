@@ -107,6 +107,21 @@ void main() {
         expect(err.toString(), isEmpty);
       });
 
+      test('prints the look-back window of the close-issues sweep', () {
+        final String root = createRepository().path;
+
+        expect(
+          runCli(
+            ['--get', 'close_issues.lookback_hours', root],
+            out: out,
+            err: err,
+          ),
+          0,
+        );
+        expect(out.toString(), '72\n');
+        expect(err.toString(), isEmpty);
+      });
+
       test('prints the override or the default of every package', () {
         final String root = createRepository().path;
 
@@ -159,7 +174,8 @@ void main() {
         const source =
             'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
             'dependencies: {exceptions: {}}\n'
-            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n';
+            'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
+            'close_issues: {lookback_hours: 72}\n';
         final String root = createRepository(files: {'k.yaml': source}).path;
 
         expect(
@@ -195,7 +211,8 @@ void main() {
         expect(
           err.toString(),
           'k_config: unsupported key "coverage" for --get. Supported keys: '
-          'coverage.default, coverage.thresholds, coverage.tool_version.\n',
+          'close_issues.lookback_hours, coverage.default, coverage.thresholds, '
+          'coverage.tool_version.\n',
         );
       });
 

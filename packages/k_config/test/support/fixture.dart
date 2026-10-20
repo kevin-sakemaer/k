@@ -19,6 +19,8 @@ dependencies:
     third_party:
       reason: "Needed for the generated bindings."
       approved_by: "Kevin, 2026-10-20, via Grok Bot."
+close_issues:
+  lookback_hours: 72
 comments:
   include:
     - "**.dart"
