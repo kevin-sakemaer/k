@@ -8,30 +8,55 @@
 # event is strictly newer than the server-side time the head SHA was pushed.
 # Commit dates are never used because they can be forged.
 
-# Strict comparison of ISO-8601 UTC timestamps. Empty values or ties are not newer.
+# Timestamps must be strict YYYY-MM-DDTHH:MM:SSZ and are compared as epochs,
+# never as strings: a fractional second or an offset fails closed.
+
+
+# True when $1 is strictly newer than $2. Empty or malformed values, and ties,
+# are not newer.
 is_newer() {
-  [ -n "$1" ] && [ -n "$2" ] && [[ "$1" > "$2" ]]
+  local a b
+  a=$(to_epoch "$1") && b=$(to_epoch "$2") && [ "$a" -gt "$b" ]
 }
 
-latest() {
-  # Prints the greatest non-empty line of stdin (ISO-8601 sorts as text).
-  local max="" line
+# extreme gt|lt: prints the greatest (gt) or smallest (lt) non-empty line of
+# stdin, or nothing. Fails on any malformed timestamp.
+extreme() {
+  local best="" best_e="" line e
   while IFS= read -r line; do
-    if [ -n "$line" ] && { [ -z "$max" ] || [[ "$line" > "$max" ]]; }; then
-      max="$line"
+    [ -n "$line" ] || continue
+    if ! e=$(to_epoch "$line"); then
+      echo "::error::Malformed timestamp '$line'." >&2
+      return 1
+    fi
+    if [ -z "$best_e" ] || [ "$e" -"$1" "$best_e" ]; then
+      best="$line" best_e="$e"
     fi
   done
-  printf '%s' "$max"
+  printf '%s' "$best"
 }
 
-earliest() {
-  local min="" line
-  while IFS= read -r line; do
-    if [ -n "$line" ] && { [ -z "$min" ] || [[ "$line" < "$min" ]]; }; then
-      min="$line"
-    fi
+latest() { extreme gt; }
+earliest() { extreme lt; }
+
+# Fields of one API record are joined with the unit separator (0x1f), a
+# non-whitespace IFS, so empty fields are kept instead of collapsing as with a
+# tab. US_JQ is the jq suffix that builds such a record from an array.
+US=$'\x1f'
+US_JQ='map(if . == null then "" else tostring end) | join("\u001f")'
+
+# read_record LINE NAME...: splits LINE on US into exactly the NAMEs. Fails
+# when the field count differs (fields shifted or missing).
+read_record() {
+  local line="$1" i=0 name
+  shift
+  local -a fields
+  IFS="$US" read -r -a fields <<<"$line$US."
+  [ "${#fields[@]}" -eq $(($# + 1)) ] && [ "${fields[$#]}" = . ] || return 1
+  for name in "$@"; do
+    printf -v "$name" '%s' "${fields[i]}"
+    i=$((i + 1))
   done
-  printf '%s' "$min"
 }
 
 # True when a "gh api -i" response (headers and body) shows a rate limit.
@@ -197,6 +222,9 @@ bare_git() {
     GIT_TERMINAL_PROMPT=0 git --git-dir="$dir" "$@"
 }
 
+# Binary files: patch-id hashes the full blob ids of the index line
+# (--full-index), and --binary adds the content itself, so different binary
+# content never gives the same id (both are kept as defense in depth).
 # Prints "STABLE VERBATIM" patch-ids of merge-base..$2 in bare repository $1.
 patch_ids() {
   local mb s v
@@ -219,7 +247,10 @@ patch_ids() {
 same_patch() {
   local label="$1" at sha dir old="" new="" url
   APPROVED_SHA="" PATCH_ID=""
-  at=$(label_added_at "$label" "$2")
+  if ! at=$(label_added_at "$label" "$2"); then
+    echo "Same-patch check for $label: malformed label time: drop."
+    return 1
+  fi
   if [ -z "$at" ]; then
     echo "Same-patch check for $label: no labeled event, no approval record: drop."
     return 1

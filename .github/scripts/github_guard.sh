@@ -87,8 +87,8 @@ remove_label() {
 main() {
   # Read current state from the API; the event payload may be stale.
   local head count labels files protected="" approved=0 listed=0 f prev
-  head=$(api "repos/$REPO/pulls/$PR" --jq '[.head.sha, .head.repo.full_name, .head.ref, .changed_files, .base.ref] | @tsv')
-  IFS=$'\t' read -r HEAD_SHA HEAD_REPO HEAD_REF count BASE_REF <<<"$head"
+  head=$(api "repos/$REPO/pulls/$PR" --jq "[.head.sha, .head.repo.full_name, .head.ref, .changed_files, .base.ref] | $US_JQ")
+  read_record "$head" HEAD_SHA HEAD_REPO HEAD_REF count BASE_REF || fail "Could not parse the PR head."
   [ -n "${HEAD_SHA:-}" ] && [ -n "${HEAD_REPO:-}" ] && [ -n "${HEAD_REF:-}" ] || fail "Could not read the PR head."
   [[ "${count:-}" =~ ^[0-9]+$ ]] || fail "Could not read the number of changed files."
   if [ "$count" -ge "$MAX_FILES" ]; then
@@ -111,12 +111,15 @@ main() {
     fi
   fi
 
-  # One line per file: new name, tab, previous name of a rename (or empty).
+  # One line per file: new name, US, previous name of a rename (or empty).
   # Both names are checked.
   files=$(api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" \
-    --jq '.[] | "\(.filename)\t\(.previous_filename // "")"')
-  while IFS=$'\t' read -r f prev; do
-    [ -n "$f" ] || continue
+    --jq ".[] | [.filename, .previous_filename] | $US_JQ")
+  local line
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    read_record "$line" f prev || fail "Could not parse the changed files listing."
+    [ -n "$f" ] || fail "A changed file has no name."
     listed=$((listed + 1))
     if is_protected "$f"; then protected+="$f"$'\n'; fi
     if [ -n "$prev" ] && is_protected "$prev"; then protected+="$prev"$'\n'; fi
