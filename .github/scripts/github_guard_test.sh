@@ -499,20 +499,32 @@ check 1 "malformed label time: drop" deleted
 # Injected git config must not reach bare_git (shared from freshness.sh):
 # each variable redirects the fetch of $ORIGIN to a missing repository, so
 # honoring it would drop the label.
-printf '[url "%s/nowhere"]\n\037insteadOf = %s\n' "$WORK" "$ORIGIN" >"$WORK/redirect.gitconfig"
-for inject in count parameters global system; do
+printf '[url "%s/nowhere"]\n\tinsteadOf = %s\n' "$WORK" "$ORIGIN" >"$WORK/redirect.gitconfig"
+mkdir -p "$WORK/home" "$WORK/xdg/git"
+cp "$WORK/redirect.gitconfig" "$WORK/home/.gitconfig"
+cp "$WORK/redirect.gitconfig" "$WORK/xdg/git/config"
+# system: only GIT_CONFIG_SYSTEM is exercised, never /etc/gitconfig itself.
+# home: $HOME/.gitconfig, blocked by GIT_CONFIG_GLOBAL=/dev/null (removing it
+# makes this case fail). xdg: $XDG_CONFIG_HOME/git/config is a global file
+# too, blocked by the same GIT_CONFIG_GLOBAL=/dev/null (removing it makes this
+# case fail as well; there is no separate XDG setting).
+for inject in count parameters global system home xdg; do
   rebase_case "injected git config ($inject) is ignored" synchronize "$V1" "$V2" ".github/w.yml lib/x.txt"
   case "$inject" in
     count) set -- GIT_CONFIG_COUNT=1 "GIT_CONFIG_KEY_0=url.$WORK/nowhere.insteadOf" "GIT_CONFIG_VALUE_0=$ORIGIN" ;;
     parameters) set -- "GIT_CONFIG_PARAMETERS='url.$WORK/nowhere.insteadof'='$ORIGIN'" ;;
     global) set -- "GIT_CONFIG_GLOBAL=$WORK/redirect.gitconfig" ;;
     system) set -- "GIT_CONFIG_SYSTEM=$WORK/redirect.gitconfig" ;;
+    home) set -- "HOME=$WORK/home" ;;
+    xdg) set -- "XDG_CONFIG_HOME=$WORK/xdg" ;;
   esac
   # check runs the script itself: export the injected variables around it.
+  SAVED_HOME="$HOME"
   export "$@"
   check 0 "same patch: keep" kept
   unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_PARAMETERS \
-    GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM
+    GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM XDG_CONFIG_HOME
+  export HOME="$SAVED_HOME"
 done
 set --
 
