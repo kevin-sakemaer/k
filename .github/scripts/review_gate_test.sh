@@ -61,7 +61,7 @@ new_case() {
   shift 2
   export MOCK="$WORK/$CASE"
   mkdir -p "$MOCK"
-  printf 'AAAA\tkevin-sakemaer/k\tfeature\n' >"$MOCK/pulls.out"
+  printf 'AAAA\tkevin-sakemaer/k\tfeature\tfalse\n' >"$MOCK/pulls.out"
   printf '%s\n' "$@" >"$MOCK/labels.out"
   : >"$MOCK/timeline.out"
   : >"$MOCK/activity.out"
@@ -249,6 +249,41 @@ SCRIPT="$WORK/nohelper/review_gate.sh"
 run_gate
 SCRIPT="$SAVED_SCRIPT"
 check 1 "freshness.sh" kept
+
+new_case "draft with fresh approval fails" labeled review:approved
+printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\n' >"$MOCK/pulls.out"
+echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
+run_gate
+check 1 "PR is a draft" kept
+
+new_case "converted_to_draft fails" converted_to_draft review:approved
+printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\n' >"$MOCK/pulls.out"
+echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
+run_gate
+check 1 "PR is a draft" kept
+
+new_case "draft without approval fails as draft" opened ci
+printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\n' >"$MOCK/pulls.out"
+run_gate
+check 1 "PR is a draft" kept
+
+new_case "push on draft still removes approval" synchronize review:approved
+printf 'AAAA\tkevin-sakemaer/k\tfeature\ttrue\n' >"$MOCK/pulls.out"
+run_gate
+check 1 "review:approved removed after a new push" deleted
+
+new_case "ready_for_review with fresh approval passes" ready_for_review review:approved
+echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
+run_gate
+check 0 "Review approved." kept
+
+new_case "unknown draft state fails closed" labeled review:approved
+printf 'AAAA\tkevin-sakemaer/k\tfeature\tnull\n' >"$MOCK/pulls.out"
+run_gate
+check 1 "Could not read the PR draft state." kept
 
 echo "$PASS passed, $FAILED failed"
 [ "$FAILED" = 0 ]

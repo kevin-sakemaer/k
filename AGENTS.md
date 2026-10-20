@@ -23,6 +23,7 @@ Mandatory before every commit and push (#16). The Reviewer may reject without de
 5. Same scripts as CI run locally (k_config, publishers check, comments check).
 6. Self-review of `git diff origin/main` against the issue acceptance criteria and Reviewer rules: English only, `///` comments only, no hard-coded values outside k.yaml.
 7. Issue references: a partial PR (`Part of #N` or `Refs #N`) contains no closing keyword for that issue anywhere (title, description, commit messages): no `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` or `resolved` followed by `#N`. `Closes #N` is allowed only when the PR fully delivers issue #N.
+8. Draft-first (#27): the PR was opened with `gh pr create --draft` and is marked ready (`gh pr ready`) only once every CI check is green; if a push turns CI red, convert it back with `gh pr ready --undo`.
 
 Points 2 to 5 live in a single script, `tool/check.sh`, which the `test` CI job also runs; `tool/check_test.sh` tests it. Install the hooks once per clone:
 
@@ -37,14 +38,15 @@ tool/install_hooks.sh
 - Coverage threshold: `coverage.default` in `k.yaml`, a YAML integer from 0 to 100. If `k.yaml` or `coverage.default` is missing, the threshold defaults to **100%** and the check still fails (`k.yaml with coverage.default is required; defaulting to 100%`). Coverage is never disabled.
 - Coverage counts every `lib/**/*.dart` file: a file that no test loads counts as 0%.
 - Checks whose script is not on `main` yet (k_config #13, publishers #4, comments #9) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
-- Points 6 and 7 stay manual.
+- Points 6 to 8 stay manual.
 
 ## Workflow
 1. **One issue = one branch = one PR.** Never push directly to `main`.
-2. Open the PR referencing the issue: `Closes #N` only if the PR fully delivers the issue; otherwise `Part of #N` or `Refs #N`, with no closing keyword (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved` followed by `#N`) anywhere in the title, description or commit messages (see Pre-commit checklist point 7).
+2. **Draft-first** (#27): open the PR as a draft (`gh pr create --draft`) and mark it ready (`gh pr ready`) only once every CI check is green. The Reviewer reviews only non-draft PRs with fully green CI and skips draft, red or pending PRs. If a push after review turns CI red, the author converts the PR back to draft (`gh pr ready --undo`) until CI is green again. `review-gate` fails on a draft PR, even with `review:approved`, so a draft PR never merges, even with auto-merge enabled.
+   Reference the issue in the PR: `Closes #N` only if the PR fully delivers the issue; otherwise `Part of #N` or `Refs #N`, with no closing keyword (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved` followed by `#N`) anywhere in the title, description or commit messages (see Pre-commit checklist point 7).
 3. Required checks on `main`: **`test`**, **`review-gate`** and **`github-guard`**.
    - `test`: runs `tool/check.sh` (see Pre-commit checklist). It always runs the review-gate script tests; it fails if `pubspec.yaml` is missing, then runs format, analyze, the repository scripts, tests and coverage, and fails if any workspace package has no tests or no member package is tested.
-   - `review-gate`: fails without the `review:approved` label or when `review:changes-requested` is present.
+   - `review-gate`: fails on a draft PR, without the `review:approved` label, or when `review:changes-requested` is present. It also runs on `ready_for_review` and `converted_to_draft`; on a draft PR it keeps `review:approved` (marking the PR ready re-runs the gate), but a push still removes it.
 4. **Reviewer verdict**: a comment on the PR **and** a label, `review:approved` or `review:changes-requested`. Before re-approving, the Reviewer removes `review:changes-requested`.
 5. **Every push** to the PR automatically removes `review:approved`, and `review-gate` turns red on the new commit. Removing a label with the workflow token does not trigger a new run, so the check **stays red until the Reviewer adds `review:approved` again**.
    - Every `review-gate` run also checks freshness: the latest `labeled review:approved` event in the PR timeline must be newer than the push that brought the current head SHA. The push time comes from the server-side repository activity API; if it is unavailable, from the fallback below. Commit dates are never used. A stale approval is removed and the job fails.
