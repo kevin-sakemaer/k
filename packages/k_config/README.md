@@ -51,6 +51,13 @@ comments:
   exceptions:               # Required, may be [].
     - path: packages/foo/lib/vendored.dart   # Existing file, relative path.
       reason: "Why this file needs non-documentation comments."
+workflows:
+  max_timeout_minutes: 20   # Integer greater than 0, largest job timeout-minutes.
+  write_scopes:             # Required, may be [].
+    - workflow: test.yml    # File name in .github/workflows.
+      job: test             # Job identifier in that workflow.
+      scope: contents       # Scope that the job grants with write.
+      reason: "Why the job needs to write with this scope."
 ```
 
 Direct dependencies published by `dart.dev`, `tools.dart.dev` or
@@ -74,6 +81,15 @@ Validation fails on:
 - a missing or blank `approved_by` on a dependency exception;
 - a dependency exception for a package that is not a direct dependency;
 - a comment exception for a missing file, or a duplicated path.
+- a `workflows.max_timeout_minutes` that is not a plain decimal integer
+  greater than 0;
+- a `workflows.write_scopes` entry whose `workflow` is not a `.yml` or
+  `.yaml` file name without directory, whose `job` or `scope` is blank or
+  padded, or that duplicates another entry.
+
+Whether each `workflows.write_scopes` entry still matches a job that grants
+that `write` is checked by `packages/k_workflows`, which reads the
+workflows.
 
 ## Adding a section
 

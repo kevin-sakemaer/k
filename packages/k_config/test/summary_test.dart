@@ -31,6 +31,17 @@ void main() {
           ],
         ),
         closeIssues: CloseIssuesConfig(lookbackHours: 72),
+        workflows: WorkflowsConfig(
+          maxTimeoutMinutes: 20,
+          writeScopes: [
+            WriteScopeException(
+              workflow: 'auto-merge.yml',
+              job: 'auto-merge',
+              scope: 'contents',
+              reason: 'Enables auto-merge.',
+            ),
+          ],
+        ),
       );
 
       expect(renderSummary(config), r'''
@@ -66,6 +77,14 @@ Allowed publishers: dart.dev, tools.dart.dev, labs.dart.dev.
 
 Look-back window of the close-issues sweep: 72 hours.
 
+### Workflows
+
+Maximum job timeout: 20 minutes.
+
+| Workflow | Job | Write scope | Reason |
+| --- | --- | --- | --- |
+| auto-merge.yml | auto-merge | contents | Enables auto-merge. |
+
 ''');
     });
 
@@ -83,6 +102,7 @@ Look-back window of the close-issues sweep: 72 hours.
           exceptions: [],
         ),
         closeIssues: CloseIssuesConfig(lookbackHours: 1),
+        workflows: WorkflowsConfig(maxTimeoutMinutes: 20, writeScopes: []),
       );
 
       final String summary = renderSummary(config);
@@ -90,6 +110,7 @@ Look-back window of the close-issues sweep: 72 hours.
       expect(summary, contains('No coverage overrides.\n'));
       expect(summary, contains('No dependency exceptions.\n'));
       expect(summary, contains('No comment exceptions.\n'));
+      expect(summary, contains('No job-level write scopes.\n'));
       expect(summary, isNot(contains('|')));
     });
   });

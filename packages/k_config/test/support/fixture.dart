@@ -21,6 +21,13 @@ dependencies:
       approved_by: "Kevin, 2026-10-20, via Grok Bot."
 close_issues:
   lookback_hours: 72
+workflows:
+  max_timeout_minutes: 20
+  write_scopes:
+    - workflow: auto-merge.yml
+      job: auto-merge
+      scope: contents
+      reason: "Enables auto-merge."
 comments:
   include:
     - "**.dart"

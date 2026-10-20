@@ -3,6 +3,14 @@ import 'dart:io';
 import 'package:k_workflows/k_workflows.dart';
 import 'package:test/test.dart';
 
+/// A valid `k.yaml` whose workflow settings are given by [workflows].
+String kYaml(String workflows) =>
+    'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
+    'dependencies: {exceptions: {}}\n'
+    'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
+    'close_issues: {lookback_hours: 72}\n'
+    'workflows: $workflows\n';
+
 void main() {
   late Directory root;
   late StringBuffer out;
@@ -11,6 +19,13 @@ void main() {
   setUp(() {
     root = Directory.systemTemp.createTempSync('k_workflows_');
     Directory('${root.path}/.github/workflows').createSync(recursive: true);
+    Directory('${root.path}/packages/a').createSync(recursive: true);
+    File('${root.path}/pubspec.yaml')
+        .writeAsStringSync('name: root\nworkspace:\n  - packages/a\n');
+    File('${root.path}/packages/a/pubspec.yaml').writeAsStringSync('name: a\n');
+    File(
+      '${root.path}/k.yaml',
+    ).writeAsStringSync(kYaml('{max_timeout_minutes: 10, write_scopes: []}'));
     out = StringBuffer();
     err = StringBuffer();
   });
@@ -42,6 +57,37 @@ void main() {
     expect(run(<String>[root.path]), 1);
     expect(err.toString(), contains('.github/workflows/a.yml: top-level'));
     expect(err.toString(), contains('1 problem(s) found.'));
+  });
+
+  test('checks write scopes and timeouts against k.yaml', () {
+    write(
+      'a.yml',
+      good.replaceFirst(
+        'timeout-minutes: 5',
+        'timeout-minutes: 11\n    permissions: {contents: write}',
+      ),
+    );
+    expect(run(<String>[root.path]), 1);
+    expect(err.toString(), contains('timeout-minutes is 11'));
+    expect(err.toString(), contains('"contents: write" is not declared'));
+    File('${root.path}/k.yaml').writeAsStringSync(
+      kYaml(
+        '{max_timeout_minutes: 11, write_scopes: [{workflow: a.yml, job: a, '
+        'scope: contents, reason: "Pushes."}]}',
+      ),
+    );
+    out.clear();
+    expect(run(<String>[root.path]), 0, reason: err.toString());
+    expect(out.toString(), contains('1 workflow(s) pass.'));
+  });
+
+  test('exits 1 when k.yaml is invalid', () {
+    write('a.yml', good);
+    File('${root.path}/k.yaml')
+        .writeAsStringSync(kYaml('{max_timeout_minutes: 0, write_scopes: []}'));
+    expect(run(<String>[root.path]), 1);
+    expect(err.toString(), contains('workflows.max_timeout_minutes'));
+    expect(err.toString(), contains('k.yaml is invalid: 1 error(s).'));
   });
 
   test('exits 1 when no workflow is found', () {

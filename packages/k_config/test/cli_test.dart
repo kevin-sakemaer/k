@@ -175,7 +175,8 @@ void main() {
             'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
             'dependencies: {exceptions: {}}\n'
             'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
-            'close_issues: {lookback_hours: 72}\n';
+            'close_issues: {lookback_hours: 72}\n'
+            'workflows: {max_timeout_minutes: 20, write_scopes: []}\n';
         final String root = createRepository(files: {'k.yaml': source}).path;
 
         expect(

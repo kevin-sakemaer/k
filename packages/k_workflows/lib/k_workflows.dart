@@ -2,4 +2,4 @@
 library;
 
 export 'src/cli.dart' show runCli;
-export 'src/lint.dart' show jobPermissionScopes, lintWorkflow;
+export 'src/lint.dart' show jobPermissionScopes, lintWorkflows;

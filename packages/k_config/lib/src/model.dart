@@ -9,6 +9,7 @@ final class KConfig {
     required this.dependencies,
     required this.comments,
     required this.closeIssues,
+    required this.workflows,
   });
 
   /// Settings of the coverage check.
@@ -22,6 +23,9 @@ final class KConfig {
 
   /// Settings of the scheduled `close-issues` sweep.
   final CloseIssuesConfig closeIssues;
+
+  /// Settings of the GitHub Actions workflow lint.
+  final WorkflowsConfig workflows;
 }
 
 /// Settings of the coverage check.
@@ -158,4 +162,41 @@ final class CloseIssuesConfig {
 
   /// How far back, in hours, the sweep looks for PRs merged into `main`.
   final int lookbackHours;
+}
+
+/// Settings of the GitHub Actions workflow lint.
+final class WorkflowsConfig {
+  /// Creates workflow settings.
+  const new({required this.maxTimeoutMinutes, required this.writeScopes});
+
+  /// Largest `timeout-minutes` that a job may set.
+  final int maxTimeoutMinutes;
+
+  /// Job-level `write` permissions that are allowed, each with its reason.
+  ///
+  /// Any other job-level `write` permission fails the workflow lint.
+  final List<WriteScopeException> writeScopes;
+}
+
+/// A justified job-level `write` permission of a workflow.
+final class WriteScopeException {
+  /// Creates an exception for the [scope] of [job] in [workflow].
+  const new({
+    required this.workflow,
+    required this.job,
+    required this.scope,
+    required this.reason,
+  });
+
+  /// File name of the workflow in `.github/workflows`, such as `test.yml`.
+  final String workflow;
+
+  /// Identifier of the job in the `jobs` mapping of [workflow].
+  final String job;
+
+  /// Permission scope that [job] grants with `write`, such as `contents`.
+  final String scope;
+
+  /// Why the job needs to write with [scope].
+  final String reason;
 }

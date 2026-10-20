@@ -1,3 +1,4 @@
+import 'package:k_config/k_config.dart';
 import 'package:yaml/yaml.dart';
 
 /// Permission scopes that a job may grant, from the GitHub Actions workflow
@@ -23,10 +24,11 @@ const Set<String> jobPermissionScopes = {
 /// Access levels that a job permission scope may have.
 const Set<String> _accessLevels = {'read', 'write', 'none'};
 
-/// `owner/repo[/path]@<40 hex commit SHA>`, with exactly one `@`.
-final RegExp _pinnedAction = RegExp(
-  r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[^@\s]+)?@[0-9a-f]{40}$',
-);
+/// A full commit SHA.
+final RegExp _sha = RegExp(r'^[0-9a-f]{40}$');
+
+/// One segment of an action path: no `/`, `@` or space.
+final RegExp _segment = RegExp(r'^[A-Za-z0-9_.-]+$');
 
 /// A Docker image digest.
 final RegExp _digest = RegExp(r'@sha256:[0-9a-f]{64}$');
@@ -34,22 +36,75 @@ final RegExp _digest = RegExp(r'@sha256:[0-9a-f]{64}$');
 /// A version comment after a pinned reference, such as `# v1.2.3`.
 final RegExp _versionComment = RegExp(r'#\s*v\d');
 
-/// Returns every hardened CI rule broken by the workflow [source], each
-/// message prefixed with [path].
+/// Returns every hardened CI rule broken by the workflows of [sources], and
+/// every entry of [config] that no longer matches them.
+///
+/// [sources] maps the path of each workflow file, relative to the repository
+/// root, to its content; messages are prefixed with that path. A workflow is
+/// matched against `workflows.write_scopes` of `k.yaml` by its file name.
 ///
 /// The rules:
 /// - the file is valid YAML without duplicated keys;
 /// - the top level sets exactly `permissions: {}`;
 /// - `jobs` is a non-empty mapping of jobs;
-/// - every job that runs steps sets a positive integer `timeout-minutes`
-///   (a job that calls a reusable workflow cannot set one);
+/// - every job that runs steps sets a positive integer `timeout-minutes` no
+///   larger than [WorkflowsConfig.maxTimeoutMinutes] (a job that calls a
+///   reusable workflow cannot set one);
 /// - job `permissions`, when set, is a mapping of known scopes to `read`,
 ///   `write` or `none`, never a shorthand such as `write-all` or `read-all`;
+/// - every job-level `write` is declared in [WorkflowsConfig.writeScopes],
+///   and every declared entry matches a job that grants that `write`;
 /// - no mapping uses the YAML merge key `<<`;
-/// - every `uses:` of a job or a step is a local action (`./...`), a Docker
-///   image pinned by digest (`docker://...@sha256:<64 hex>`), or
-///   `owner/repo[/path]@<40 hex>` (exactly one `@`) followed on its line by a `# v...` comment.
-List<String> lintWorkflow(String source, String path) {
+/// - every step `uses:` is a local action (`./...`), a Docker image pinned
+///   by digest (`docker://...@sha256:<64 hex>`), or
+///   `owner/repo[/path]@<40 hex>` (exactly one `@`) followed on its line by a
+///   `# v...` comment; path segments are never empty, `.` or `..`;
+/// - every job-level `uses:` (a reusable workflow call, exempt from
+///   `timeout-minutes`) is either a workflow of [sources] given as
+///   `./.github/workflows/<file>`, so that it is linted too, or a pinned
+///   `owner/repo/.github/workflows/<file>@<40 hex>` reference;
+/// - every job `container` image and every `services.*.image` is pinned by
+///   digest (`@sha256:<64 hex>`).
+List<String> lintWorkflows(
+  Map<String, String> sources,
+  WorkflowsConfig config,
+) {
+  final errors = <String>[];
+  final Set<(String, String, String)> granted = {};
+  final Set<String> localWorkflows = {
+    for (final String path in sources.keys) './$path',
+  };
+  for (final MapEntry(key: path, value: source) in sources.entries) {
+    final String workflow = path.split('/').last;
+    errors.addAll(
+      _lintWorkflow(
+        source,
+        path,
+        config,
+        (job, scope) => granted.add((workflow, job, scope)),
+        localWorkflows,
+      ),
+    );
+  }
+  for (final WriteScopeException declared in config.writeScopes) {
+    if (!granted.contains((declared.workflow, declared.job, declared.scope))) {
+      errors.add(
+        'k.yaml: workflows.write_scopes: stale entry: job '
+        "'${declared.job}' of ${declared.workflow} does not grant "
+        '"${declared.scope}: write"; remove the entry.',
+      );
+    }
+  }
+  return errors;
+}
+
+List<String> _lintWorkflow(
+  String source,
+  String path,
+  WorkflowsConfig config,
+  void Function(String job, String scope) onWrite,
+  Set<String> localWorkflows,
+) {
   final errors = <String>[];
   void report(String message) => errors.add('$path: $message');
   final YamlNode document;
@@ -76,15 +131,53 @@ List<String> lintWorkflow(String source, String path) {
     report('jobs must be a non-empty mapping.');
     return errors;
   }
+  final String workflow = path.split('/').last;
   for (final MapEntry(:key, :value) in jobs.nodes.entries) {
     final job = '${(key as YamlNode).value}';
     if (value is! YamlMap) {
       report("job '$job' must be a mapping.");
       continue;
     }
-    _lintJob(value, source, (message) => report("job '$job': $message"));
+    _lintJob(
+      value,
+      source,
+      _JobContext(
+        workflow: workflow,
+        job: job,
+        config: config,
+        report: (message) => report("job '$job': $message"),
+        onWrite: (scope) => onWrite(job, scope),
+        localWorkflows: localWorkflows,
+      ),
+    );
   }
   return errors;
+}
+
+/// What [_lintJob] needs to know about the job it checks.
+final class _JobContext {
+  const new({
+    required this.workflow,
+    required this.job,
+    required this.config,
+    required this.report,
+    required this.onWrite,
+    required this.localWorkflows,
+  });
+
+  final String workflow;
+  final String job;
+  final WorkflowsConfig config;
+  final void Function(String message) report;
+  final void Function(String scope) onWrite;
+
+  /// `./<path>` of every linted workflow, for local reusable workflow calls.
+  final Set<String> localWorkflows;
+
+  bool declares(String scope) => config.writeScopes.any(
+    (entry) =>
+        entry.workflow == workflow && entry.job == job && entry.scope == scope,
+  );
 }
 
 bool _hasMergeKey(YamlNode node) => switch (node) {
@@ -96,19 +189,27 @@ bool _hasMergeKey(YamlNode node) => switch (node) {
   _ => false,
 };
 
-void _lintJob(YamlMap job, String source, void Function(String) report) {
+void _lintJob(YamlMap job, String source, _JobContext context) {
+  final void Function(String) report = context.report;
   final YamlNode? uses = job.nodes['uses'];
   if (uses != null) {
-    _lintUses(uses, source, report);
+    _lintWorkflowCall(uses, source, context);
   } else {
     final Object? timeout = job['timeout-minutes'];
+    final int max = context.config.maxTimeoutMinutes;
     if (timeout is! int || timeout <= 0) {
       report('timeout-minutes must be a positive integer.');
+    } else if (timeout > max) {
+      report(
+        'timeout-minutes is $timeout, above '
+        'workflows.max_timeout_minutes of k.yaml ($max).',
+      );
     }
   }
   if (job.containsKey('permissions')) {
-    _lintPermissions(job['permissions'], report);
+    _lintPermissions(job['permissions'], context);
   }
+  _lintContainers(job, report);
   final YamlNode? steps = job.nodes['steps'];
   if (steps is YamlList) {
     for (final YamlNode step in steps.nodes) {
@@ -121,7 +222,8 @@ void _lintJob(YamlMap job, String source, void Function(String) report) {
   }
 }
 
-void _lintPermissions(Object? permissions, void Function(String) report) {
+void _lintPermissions(Object? permissions, _JobContext context) {
+  final void Function(String) report = context.report;
   if (permissions is! Map) {
     report(
       'permissions must be a mapping of explicit scopes, '
@@ -134,9 +236,66 @@ void _lintPermissions(Object? permissions, void Function(String) report) {
       report('unknown permission scope "$key".');
     } else if (!_accessLevels.contains(value)) {
       report('permission "$key" must be read, write or none, not "$value".');
+    } else if (value == 'write') {
+      context.onWrite('$key');
+      if (!context.declares('$key')) {
+        report(
+          '"$key: write" is not declared in workflows.write_scopes of '
+          'k.yaml; declare it with a reason or grant read.',
+        );
+      }
     }
   }
 }
+
+/// Checks the `uses:` of a job that calls a reusable workflow.
+///
+/// Such a job cannot set `timeout-minutes`, so the called workflow must be
+/// linted too: a local `./.github/workflows/<file>` that is one of the linted
+/// workflows, or a remote workflow pinned by commit SHA.
+void _lintWorkflowCall(YamlNode node, String source, _JobContext context) {
+  final Object? value = node.value;
+  if (value is String && value.startsWith('./')) {
+    if (!context.localWorkflows.contains(value)) {
+      context.report(
+        'reusable workflow "$value" must be one of the linted workflows '
+        'in ./.github/workflows.',
+      );
+    }
+    return;
+  }
+  if (value is String && value.startsWith('docker://')) {
+    context.report('a job-level uses: must call a workflow, not "$value".');
+    return;
+  }
+  _lintUses(node, source, context.report);
+}
+
+void _lintContainers(YamlMap job, void Function(String) report) {
+  void image(Object? value, String where) {
+    if (value is! String || !_digest.hasMatch(value)) {
+      report('$where image "$value" must be pinned by digest (@sha256:...).');
+    }
+  }
+
+  Object? imageOf(Object? value) =>
+      value is Map<Object?, Object?> ? value['image'] : value;
+  if (job.containsKey('container')) {
+    image(imageOf(job['container']), 'container');
+  }
+  final Object? services = job['services'];
+  if (services is Map<Object?, Object?>) {
+    for (final MapEntry(:key, :value) in services.entries) {
+      image(imageOf(value), "service '$key'");
+    }
+  }
+}
+
+/// Whether [segments] has only non-empty segments that are
+/// neither `.` nor `..` and contain no `@` or space.
+bool _validSegments(Iterable<String> segments) => segments.every(
+  (segment) => segment != '.' && segment != '..' && _segment.hasMatch(segment),
+);
 
 void _lintUses(YamlNode node, String source, void Function(String) report) {
   final Object? value = node.value;
@@ -145,6 +304,9 @@ void _lintUses(YamlNode node, String source, void Function(String) report) {
     return;
   }
   if (value.startsWith('./')) {
+    if (!_validSegments(value.substring(2).split('/'))) {
+      report('local action "$value" has an empty, "." or ".." path segment.');
+    }
     return;
   }
   if (value.startsWith('docker://')) {
@@ -153,7 +315,12 @@ void _lintUses(YamlNode node, String source, void Function(String) report) {
     }
     return;
   }
-  if (!_pinnedAction.hasMatch(value)) {
+  final List<String> parts = value.split('@');
+  final List<String> path = parts.first.split('/');
+  if (parts.length != 2 ||
+      !_sha.hasMatch(parts.last) ||
+      path.length < 2 ||
+      !_validSegments(path)) {
     report(
       '"$value" must be owner/repo[/path]@<full 40-character commit SHA>, '
       'with exactly one @.',

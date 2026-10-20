@@ -24,6 +24,14 @@ String edit(String from, String to) {
 /// Returns [text]: wraps one expected error split over several lines.
 String message(String text) => text;
 
+/// The write scope entry of [validConfig].
+const String entry = '''
+    - workflow: auto-merge.yml
+      job: auto-merge
+      scope: contents
+      reason: "Enables auto-merge."
+''';
+
 void main() {
   group('parseKConfig', () {
     test('returns typed values for a valid configuration', () {
@@ -68,6 +76,27 @@ void main() {
       expect(config.comments.exceptions.single.path, endsWith('legacy.dart'));
       expect(config.comments.exceptions.single.reason, isNotEmpty);
       expect(config.closeIssues.lookbackHours, 72);
+      expect(config.workflows.maxTimeoutMinutes, 20);
+      final WriteScopeException scope = config.workflows.writeScopes.single;
+      expect(
+        (scope.workflow, scope.job, scope.scope, scope.reason),
+        ('auto-merge.yml', 'auto-merge', 'contents', 'Enables auto-merge.'),
+      );
+    });
+
+    test('accepts several write scopes of one job', () {
+      final String source = edit(
+        '  write_scopes:\n$entry',
+        '  write_scopes:\n$entry${entry.replaceFirst('contents', 'statuses')}',
+      );
+      final KConfig config = switch (parse(source)) {
+        KConfigValid(:final KConfig config) => config,
+        KConfigInvalid(:final List<String> errors) => fail('$errors'),
+      };
+      expect(config.workflows.writeScopes.map((scope) => scope.scope), [
+        'contents',
+        'statuses',
+      ]);
     });
 
     test('accepts empty overrides and exceptions', () {
@@ -76,6 +105,7 @@ coverage: {default: 100, overrides: {}, tool_version: 1.16.0}
 dependencies: {exceptions: {}}
 comments: {include: ["**.dart"], exclude: [], exceptions: []}
 close_issues: {lookback_hours: 72}
+workflows: {max_timeout_minutes: 20, write_scopes: []}
 ''';
 
       expect(parse(source), isA<KConfigValid>());
@@ -85,7 +115,8 @@ close_issues: {lookback_hours: 72}
       const empty =
           'dependencies: {exceptions: {}}\n'
           'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
-          'close_issues: {lookback_hours: 72}\n';
+          'close_issues: {lookback_hours: 72}\n'
+          'workflows: {max_timeout_minutes: 20, write_scopes: []}\n';
       for (final bound in [0, 100]) {
         final source =
             'coverage: {default: $bound, tool_version: 1.16.0, overrides: {}}\n'
@@ -140,13 +171,17 @@ close_issues: {lookback_hours: 72}
         [
           message(
             'k.yaml: format: unknown key. Allowed keys: '
-            'close_issues, comments, coverage, dependencies.',
+            'close_issues, comments, coverage, dependencies, workflows.',
           ),
         ],
       ),
       'a missing section': (
         validConfig.substring(0, validConfig.indexOf('comments:')),
         ['k.yaml: comments: missing required key.'],
+      ),
+      'a missing workflows section': (
+        validConfig.replaceFirst(RegExp(r'workflows:\n(  .*\n)*'), ''),
+        ['k.yaml: workflows: missing required key.'],
       ),
       'an unknown nested key': (
         edit('  default: 100', '  default: 100\n  branches: 90'),
@@ -173,7 +208,7 @@ close_issues: {lookback_hours: 72}
           'k.yaml: comments: must be a mapping.',
           message(
             'k.yaml: unused: unknown key. Allowed keys: '
-            'close_issues, comments, coverage, dependencies.',
+            'close_issues, comments, coverage, dependencies, workflows.',
           ),
         ],
       ),
@@ -278,7 +313,8 @@ close_issues: {lookback_hours: 72}
         'coverage: {default: 100, tool_version: 1.16.0}\n'
             'dependencies: {exceptions: {}}\n'
             'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
-            'close_issues: {lookback_hours: 72}\n',
+            'close_issues: {lookback_hours: 72}\n'
+            'workflows: {max_timeout_minutes: 20, write_scopes: []}\n',
         ['k.yaml: coverage.overrides: missing required key.'],
       ),
       'a quoted threshold': (
@@ -555,21 +591,24 @@ close_issues: {lookback_hours: 72}
         'coverage: {default: 100, overrides: {}, tool_version: 1.16.0}\n'
             'dependencies: {exceptions: []}\n'
             'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
-            'close_issues: {lookback_hours: 72}\n',
+            'close_issues: {lookback_hours: 72}\n'
+            'workflows: {max_timeout_minutes: 20, write_scopes: []}\n',
         ['k.yaml: dependencies.exceptions: must be a mapping.'],
       ),
       'a dependencies section that is not a mapping': (
         'coverage: {default: 100, overrides: {}, tool_version: 1.16.0}\n'
             'dependencies: []\n'
             'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
-            'close_issues: {lookback_hours: 72}\n',
+            'close_issues: {lookback_hours: 72}\n'
+            'workflows: {max_timeout_minutes: 20, write_scopes: []}\n',
         ['k.yaml: dependencies: must be a mapping.'],
       ),
       'a coverage section that is not a mapping': (
         'coverage: 100\n'
             'dependencies: {exceptions: {}}\n'
             'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
-            'close_issues: {lookback_hours: 72}\n',
+            'close_issues: {lookback_hours: 72}\n'
+            'workflows: {max_timeout_minutes: 20, write_scopes: []}\n',
         ['k.yaml: coverage: must be a mapping.'],
       ),
       'comment exceptions that are not a list': (
@@ -680,6 +719,102 @@ close_issues: {lookback_hours: 72}
           message(
             'k.yaml: comments.exceptions[1]: '
             'duplicated path "packages/alpha/lib/legacy.dart".',
+          ),
+        ],
+      ),
+      'a zero max_timeout_minutes': (
+        edit('max_timeout_minutes: 20', 'max_timeout_minutes: 0'),
+        [
+          message(
+            'k.yaml: workflows.max_timeout_minutes: '
+            'must be an integer greater than 0, found 0.',
+          ),
+        ],
+      ),
+      'a quoted max_timeout_minutes': (
+        edit('max_timeout_minutes: 20', 'max_timeout_minutes: "20"'),
+        [
+          message(
+            'k.yaml: workflows.max_timeout_minutes: '
+            'must be an integer greater than 0, found "20".',
+          ),
+        ],
+      ),
+      'a decimal max_timeout_minutes': (
+        edit('max_timeout_minutes: 20', 'max_timeout_minutes: 0x14'),
+        [
+          message(
+            'k.yaml: workflows.max_timeout_minutes: '
+            'must be an integer greater than 0, found 0x14.',
+          ),
+        ],
+      ),
+      'a missing max_timeout_minutes': (
+        edit('  max_timeout_minutes: 20\n', ''),
+        ['k.yaml: workflows.max_timeout_minutes: missing required key.'],
+      ),
+      'an unknown workflows key': (
+        edit('  max_timeout_minutes: 20', '  max_timeout_minutes: 20\n  x: 1'),
+        [
+          message(
+            'k.yaml: workflows.x: unknown key. Allowed keys: '
+            'max_timeout_minutes, write_scopes.',
+          ),
+        ],
+      ),
+      'write scopes that are not a list': (
+        edit('  write_scopes:\n$entry', '  write_scopes: {}\n'),
+        ['k.yaml: workflows.write_scopes: must be a list.'],
+      ),
+      'a write scope that is not a mapping': (
+        edit('  write_scopes:\n$entry', '  write_scopes: [contents]\n'),
+        ['k.yaml: workflows.write_scopes[0]: must be a mapping.'],
+      ),
+      'a write scope without a reason': (
+        edit('      reason: "Enables auto-merge."\n', ''),
+        ['k.yaml: workflows.write_scopes[0].reason: missing required key.'],
+      ),
+      'a write scope with a blank reason': (
+        edit('"Enables auto-merge."', '" "'),
+        ['k.yaml: workflows.write_scopes[0].reason: must be a non-empty'],
+      ),
+      'a write scope with an unknown key': (
+        edit('      job: auto-merge', '      job: auto-merge\n      level: w'),
+        ['k.yaml: workflows.write_scopes[0].level: unknown key.'],
+      ),
+      'a write scope workflow that is a path': (
+        edit('workflow: auto-merge.yml', 'workflow: .github/workflows/a.yml'),
+        [
+          message(
+            'k.yaml: workflows.write_scopes[0].workflow: must be the file name '
+            'of a workflow in .github/workflows, such as "test.yml", found '
+            '".github/workflows/a.yml".',
+          ),
+        ],
+      ),
+      'a write scope workflow that is not YAML': (
+        edit('workflow: auto-merge.yml', 'workflow: 3'),
+        ['k.yaml: workflows.write_scopes[0].workflow: must be the file name'],
+      ),
+      'a write scope with a blank job': (
+        edit('job: auto-merge', 'job: " "'),
+        [
+          message(
+            'k.yaml: workflows.write_scopes[0].job: '
+            'must be a non-empty string without surrounding spaces.',
+          ),
+        ],
+      ),
+      'a write scope with a padded scope': (
+        edit('scope: contents', 'scope: " contents"'),
+        ['k.yaml: workflows.write_scopes[0].scope: must be a non-empty'],
+      ),
+      'a duplicated write scope': (
+        edit('  write_scopes:\n$entry', '  write_scopes:\n$entry$entry'),
+        [
+          message(
+            'k.yaml: workflows.write_scopes[1]: duplicated write scope '
+            '"contents" of job "auto-merge" in "auto-merge.yml".',
           ),
         ],
       ),

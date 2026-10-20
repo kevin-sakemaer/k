@@ -1,3 +1,4 @@
+import 'package:k_config/k_config.dart';
 import 'package:k_workflows/k_workflows.dart';
 import 'package:test/test.dart';
 
@@ -19,7 +20,31 @@ String workflow({
     '    steps:\n'
     '      $step\n';
 
-List<String> lint(String source) => lintWorkflow(source, 'w.yml');
+/// Workflow settings without write scopes and with a 10 minute limit.
+const WorkflowsConfig noWrites = WorkflowsConfig(
+  maxTimeoutMinutes: 10,
+  writeScopes: [],
+);
+
+/// Settings that declare the `write` of [scope] for job `a` of `w.yml`.
+WorkflowsConfig declaring(String scope, {String workflow = 'w.yml'}) =>
+    WorkflowsConfig(
+      maxTimeoutMinutes: 10,
+      writeScopes: [
+        WriteScopeException(
+          workflow: workflow,
+          job: 'a',
+          scope: scope,
+          reason: 'Needed by the test.',
+        ),
+      ],
+    );
+
+List<String> lint(String source, {WorkflowsConfig config = noWrites}) =>
+    lintWorkflows({'w.yml': source}, config);
+
+/// Returns [text]: wraps one expected error split over several lines.
+String message(String text) => text;
 
 void main() {
   test('a hardened workflow passes', () {
@@ -130,6 +155,133 @@ void main() {
     });
   });
 
+  group('uses path segments', () {
+    test('empty, ".", ".." or trailing-slash segments fail', () {
+      for (final ref in <String>[
+        'a/b/x/@$sha',
+        'a/b/../c@$sha',
+        'a/b/./c@$sha',
+        'a//c@$sha',
+        'a/@$sha',
+        '/b@$sha',
+        '../b@$sha',
+        'a/b c@$sha',
+      ]) {
+        expect(lint(workflow(step: '- uses: "$ref" # v1')), [
+          contains('must be owner/repo[/path]@<full 40-character commit SHA>'),
+        ], reason: ref);
+      }
+    });
+
+    test('a valid nested path passes', () {
+      expect(lint(workflow(step: '- uses: a/b/c/d@$sha # v1')), isEmpty);
+    });
+
+    test('a local action with an empty, "." or ".." segment fails', () {
+      for (final ref in <String>['./../x', './a/./b', './a//b', './a/']) {
+        expect(lint(workflow(step: '- uses: $ref')), [
+          contains('has an empty, "." or ".." path segment'),
+        ], reason: ref);
+      }
+    });
+  });
+
+  group('reusable workflow calls', () {
+    const called =
+        'permissions: {}\n'
+        'jobs:\n'
+        '  a:\n'
+        '    runs-on: ubuntu-latest\n'
+        '    timeout-minutes: 5\n'
+        '    steps:\n'
+        '      - run: "true"\n';
+
+    String caller(String uses) =>
+        'permissions: {}\n'
+        'jobs:\n'
+        '  call:\n'
+        '    uses: $uses\n';
+
+    test('a linted local workflow passes and is itself linted', () {
+      final Map<String, String> sources = {
+        '.github/workflows/caller.yml': caller(
+          './.github/workflows/called.yml',
+        ),
+        '.github/workflows/called.yml': called,
+      };
+      expect(lintWorkflows(sources, noWrites), isEmpty);
+      sources['.github/workflows/called.yml'] = called.replaceFirst(
+        '    timeout-minutes: 5\n',
+        '',
+      );
+      expect(lintWorkflows(sources, noWrites), [
+        contains("called.yml: job 'a': timeout-minutes"),
+      ]);
+    });
+
+    test('a local path that is not a linted workflow fails', () {
+      for (final uses in <String>[
+        './.github/workflows/missing.yml',
+        './.github/actions/x',
+        './.github/workflows/../workflows/called.yml',
+      ]) {
+        expect(
+          lintWorkflows({
+            '.github/workflows/caller.yml': caller(uses),
+            '.github/workflows/called.yml': called,
+          }, noWrites),
+          [contains('must be one of the linted workflows')],
+          reason: uses,
+        );
+      }
+    });
+
+    test('a docker reference cannot be called as a workflow', () {
+      expect(lint(caller('docker://alpine@sha256:${'a' * 64}')), [
+        contains('a job-level uses: must call a workflow'),
+      ]);
+    });
+  });
+
+  group('container and services images', () {
+    final digest = 'sha256:${'0' * 64}';
+
+    String withJob(String extra) =>
+        workflow(job: '    timeout-minutes: 5\n$extra'.trimRight());
+
+    test('images pinned by digest pass', () {
+      expect(lint(withJob('    container: node@$digest\n')), isEmpty);
+      expect(
+        lint(withJob('    container:\n      image: node@$digest\n')),
+        isEmpty,
+      );
+      expect(
+        lint(
+          withJob(
+            '    services:\n      db:\n        image: postgres@$digest\n',
+          ),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('unpinned or missing images fail', () {
+      expect(lint(withJob('    container: node:20\n')), [
+        contains('container image "node:20" must be pinned by digest'),
+      ]);
+      expect(lint(withJob('    container:\n      options: --cpus 1\n')), [
+        contains('container image "null" must be pinned by digest'),
+      ]);
+      expect(
+        lint(withJob('    services:\n      db:\n        image: postgres\n')),
+        [contains("service 'db' image \"postgres\" must be pinned")],
+      );
+      expect(lint(withJob('    services:\n      db: redis:7\n')), [
+        contains("service 'db' image \"redis:7\" must be pinned"),
+      ]);
+    });
+  });
+
   group('merge keys', () {
     test('a merge key in a step fails', () {
       final String source = workflow(step: '- <<: *st').replaceFirst(
@@ -194,7 +346,7 @@ void main() {
       expect(lint(workflow(job: '    timeout-minutes: 5')), isEmpty);
     });
 
-    test('every scope accepts read, write and none', () {
+    test('every scope accepts read and none, and a declared write', () {
       for (final String scope in jobPermissionScopes) {
         for (final level in <String>['read', 'write', 'none']) {
           expect(
@@ -204,11 +356,78 @@ void main() {
                     '    timeout-minutes: 5\n    permissions:\n'
                     '      $scope: $level',
               ),
+              config: level == 'write' ? declaring(scope) : noWrites,
             ),
             isEmpty,
+            reason: '$scope: $level',
           );
         }
       }
+    });
+  });
+
+  group('write scopes', () {
+    String writing(String scope) => workflow(
+      job: '    timeout-minutes: 5\n    permissions:\n      $scope: write',
+    );
+
+    test('an undeclared job-level write fails', () {
+      expect(lint(writing('contents')), [
+        message(
+          "w.yml: job 'a': \"contents: write\" is not declared in "
+          'workflows.write_scopes of k.yaml; declare it with a reason or '
+          'grant read.',
+        ),
+      ]);
+    });
+
+    test('a write declared for another scope, job or workflow fails', () {
+      expect(lint(writing('contents'), config: declaring('pull-requests')), [
+        contains('"contents: write" is not declared'),
+        contains("stale entry: job 'a' of w.yml"),
+      ]);
+      expect(
+        lint(
+          writing('contents').replaceFirst('  a:', '  b:'),
+          config: declaring('contents'),
+        ),
+        [
+          contains("job 'b': \"contents: write\" is not declared"),
+          contains("stale entry: job 'a' of w.yml"),
+        ],
+      );
+      expect(
+        lint(
+          writing('contents'),
+          config: declaring('contents', workflow: 'x.yml'),
+        ),
+        [
+          contains('"contents: write" is not declared'),
+          contains("stale entry: job 'a' of x.yml"),
+        ],
+      );
+    });
+
+    test('a declared entry that the job no longer grants is stale', () {
+      expect(lint(workflow(), config: declaring('contents')), [
+        message(
+          'k.yaml: workflows.write_scopes: stale entry: job '
+          "'a' of w.yml does not grant \"contents: write\"; "
+          'remove the entry.',
+        ),
+      ]);
+      expect(lint(workflow(), config: declaring('statuses')), [
+        contains('does not grant "statuses: write"'),
+      ]);
+    });
+
+    test('workflows are matched by file name', () {
+      expect(
+        lintWorkflows({
+          '.github/workflows/w.yml': writing('contents'),
+        }, declaring('contents')),
+        isEmpty,
+      );
     });
   });
 
@@ -223,6 +442,16 @@ void main() {
           contains('timeout-minutes must be a positive integer'),
         ]);
       }
+    });
+
+    test('a timeout above workflows.max_timeout_minutes fails', () {
+      expect(lint(workflow(job: '    timeout-minutes: 10')), isEmpty);
+      expect(lint(workflow(job: '    timeout-minutes: 11')), [
+        message(
+          "w.yml: job 'a': timeout-minutes is 11, above "
+          'workflows.max_timeout_minutes of k.yaml (10).',
+        ),
+      ]);
     });
 
     test('invalid YAML, a non-mapping workflow or job, and no jobs fail', () {
