@@ -35,7 +35,7 @@ tool/install_hooks.sh
 - `pre-push` fetches `origin/main`, then for each pushed commit checks that it contains `origin/main` (point 1) and runs the full `tool/check.sh` in a clean temporary worktree of that commit (points 2 to 5).
 - Packages come from `dart pub workspace list --json`. Every package must have `test/**/*_test.dart`; the workspace root is skipped only when it has no `lib/`.
 - `k.yaml` is mandatory: without it, `tool/check.sh` fails first with `k.yaml is required`. There is no default value outside `k.yaml`.
-- `tool/check.sh` never parses `k.yaml`: it validates it with `k_config` (required: a missing `packages/k_config/bin/k_config.dart` fails the job), then reads each value through `dart run k_config --get <key>` (`coverage.default`, `coverage.tool_version`). An invalid `k.yaml` fails the check. Coverage is never disabled.
+- `tool/check.sh` never parses `k.yaml`: it validates it with `k_config` (required: a missing `packages/k_config/bin/k_config.dart` fails the job), then reads each value through `dart run k_config --get <key>` (`coverage.thresholds`, `coverage.tool_version`). An invalid `k.yaml` fails the check. Coverage is never disabled.
 - Coverage counts every `lib/**/*.dart` file: a file that no test loads counts as 0%.
 - The comments check (#9) runs `dart run k_comments --root . --include '**.dart' --exclude '.dart_tool/**' --exclude '**/.dart_tool/**'` (package `packages/k_comments`, #20) and fails on any violation. `packages/k_comments/bin/k_comments.dart` is on `main`, so a missing checker always fails the job. Its globs and exceptions are still to be read from k.yaml (#9). A workspace package executable `packages/<name>/bin/<name>.dart` is run by package name, any other script by path.
 - Checks whose script is not on `main` yet (publishers #4 at `packages/k_publishers/bin/k_publishers.dart`; #4 may change that location) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
@@ -96,7 +96,7 @@ comments:
       reason: "Why this file needs non-documentation comments."
 ```
 
-- `coverage`: `default` applies to every package; an override lowers it for one package and must be strictly lower than `default`. Overrides are validated now, but `tool/check.sh` only enforces `coverage.default` for every package until #5 lands; until then an override has no effect on the coverage check. `tool_version` is the exact version of `package:coverage` (tools.dart.dev) that `tool/check.sh` activates to build the lcov report.
+- `coverage`: `default` applies to every package; an override lowers it for one package and must be strictly lower than `default`. `tool/check.sh` (#5) enforces, per package, the line coverage of `lib/` against its override or `coverage.default`, read through `k_config --get coverage.thresholds`; below the threshold the required `test` check fails. The coverage of each package is added to the job summary, next to the k.yaml summary that lists every active override with its reason. `tool_version` is the exact version of `package:coverage` (tools.dart.dev) that `tool/check.sh` activates to build the lcov report.
 - `dependencies`: the publishers `dart.dev`, `tools.dart.dev` and `labs.dart.dev` are fixed in `k_config` and cannot be changed from `k.yaml` (an `allowed_publishers` key fails as an unknown key). Any other direct dependency needs an entry in `exceptions`.
 - `comments`: files allowed to contain non-documentation comments.
 
