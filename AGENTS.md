@@ -8,7 +8,7 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
 - Public members are documented.
 - `k.yaml` at the repository root is the single source of configuration; nothing is hard-coded.
 - Every rule must live in a required CI check. Checks still to come, each tracked in its own issue and made required on `main` when done:
-  - `///`-only comments: #9;
+  - `///`-only comments: #9 (runs in the `test` check; its k.yaml settings come with #13);
   - dependency publishers: #4;
   - `k.yaml` validation: #10.
 
@@ -34,7 +34,8 @@ tool/install_hooks.sh
 - Packages come from `dart pub workspace list --json`. Every package must have `test/**/*_test.dart`; the workspace root is skipped only when it has no `lib/`.
 - Coverage threshold: `coverage.default` in `k.yaml`, a YAML integer from 0 to 100. If `k.yaml` or `coverage.default` is missing, the threshold defaults to **100%** and the check still fails (`k.yaml with coverage.default is required; defaulting to 100%`). Coverage is never disabled.
 - Coverage counts every `lib/**/*.dart` file: a file that no test loads counts as 0%.
-- Checks whose script is not on `main` yet (k_config #13, publishers #4, comments #9) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
+- The comments check (#9) runs `dart run k_comments --root . --include '**.dart' --exclude '.dart_tool/**' --exclude '**/.dart_tool/**'` (package `packages/k_comments`, #20) and fails on any violation. Its globs and exceptions move to k.yaml with #13. A workspace package executable `packages/<name>/bin/<name>.dart` is run by package name, any other script by path.
+- Checks whose script is not on `main` yet (k_config #13 at `packages/k_config/bin/k_config.dart`, publishers #4 at `tool/check_publishers.dart` or `packages/k_publishers/bin/k_publishers.dart`) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
 - Point 6 stays manual.
 
 ## Workflow
