@@ -51,16 +51,15 @@ tool/install_hooks.sh
    - Reopening the PR is treated like a push: `review:approved` is removed and the check fails, because pushes made while a PR is closed leave no trace in its timeline.
    - The fallback push time is the latest of the `head_ref_force_pushed`, `reopened` and `head_ref_restored` events and the first workflow run for the head SHA. It is used only when the activity API answers an access 403 or 404. A rate-limit 403 fails the job; re-run it later.
    - `synchronize` and `reopened` runs each get their own concurrency group, so a label event can never cancel them.
+   - Re-running an old `review-gate` run stays red: a re-run reuses its original event (and that event's labels), so it cannot see a label added later. To unblock a PR, add `review:approved` again; do not re-run the job.
    - On fork PRs the token is read-only: the label cannot be removed automatically and the job fails with a clear message; the Reviewer removes the label by hand.
-6. **Auto-merge** (not active yet, see below): the dev runs `gh pr merge --auto --squash`. The PR merges by itself when the Reviewer adds `review:approved` and every required check is green.
-7. **Nobody merges by hand.** The only exception is the bootstrap: the PRs for #1 and #2 are merged once by hand after the Reviewer's verdict.
+6. **Auto-merge**: the dev runs `gh pr merge --auto --squash`. The PR merges by itself when the Reviewer adds `review:approved` and every required check is green.
+7. **Resolve every review thread.** The ruleset requires all review threads to be resolved: the author resolves each of their threads (after fixing or answering it), otherwise an approved PR with green checks does not merge.
+8. **Nobody merges by hand.** The only exception is the bootstrap: the PRs for #1 and #2 are merged once by hand after the Reviewer's verdict.
 
 ## Current status (#2)
-- Done: squash merge only, branches deleted after merge.
-- Right after this PR is merged:
-  - create the `main` ruleset (PR required, squash only, 0 approvals, resolved threads, strict required checks `test` and `review-gate`, no force-push, no deletion, no bypass);
-  - enable `allow_auto_merge`.
-- Until then, auto-merge is **not** available, and direct pushes to `main` are not blocked by GitHub.
+- Done: squash merge only, branches deleted after merge, auto-merge enabled.
+- The `main` ruleset is active: PR required, squash only, 0 approvals, resolved threads, strict required checks `test` and `review-gate`, no force-push, no deletion, no bypass. Direct pushes to `main` are rejected.
 
 ## Dependencies
 - **Direct** dependencies are allowed only if their verified publisher on pub.dev is `dart.dev`, `tools.dart.dev` or `labs.dart.dev`.
