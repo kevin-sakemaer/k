@@ -133,25 +133,44 @@ head_push_time() {
 # match: --stable alone ignores whitespace, which can be meaningful (YAML).
 # Git objects are fetched into a throwaway bare repository; nothing from the
 # PR is checked out or run. Any error or doubt means "not the same patch".
-# Needs BASE_REF besides the freshness variables. GATE_GIT_URL is the remote
-# to fetch from (tests point it to a local repository).
+# Same-repository PRs only: a fork head (HEAD_REPO != REPO) always drops.
+# Needs BASE_REF besides the freshness variables. The remote is always
+# https://github.com/$REPO.git; GATE_GIT_URL is a test-only override, honored
+# only with K_GATE_TEST=1, which no workflow sets.
+
+# Prints the epoch of a strict YYYY-MM-DDTHH:MM:SSZ timestamp, or fails.
+to_epoch() {
+  [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || return 1
+  date -u -d "$1" +%s 2>/dev/null
+}
 
 # Prints the approved SHA for a label added at $1, from the activity API.
 approved_sha_at() {
-  local entries sha ts best="" best_ts=""
+  local entries sha ts e at best="" best_e=""
+  if ! at=$(to_epoch "$1"); then
+    echo "Malformed label time '$1': the approved SHA is unknown." >&2
+    return 1
+  fi
   if ! entries=$("$GH" api --paginate "repos/$HEAD_REPO/activity?ref=refs/heads/$HEAD_REF&per_page=100" \
     --jq '.[] | "\(.after) \(.timestamp)"' 2>/dev/null); then
     echo "Activity API failed: the approved SHA cannot be identified." >&2
     return 1
   fi
   while read -r sha ts; do
-    [ -n "$sha" ] && [ -n "$ts" ] || continue
-    if [ "$ts" = "$1" ]; then
+    [ -n "$sha$ts" ] || continue
+    if ! e=$(to_epoch "$ts"); then
+      echo "Malformed push time '$ts': the approved SHA is unknown." >&2
+      return 1
+    fi
+    if [ "$e" -eq "$at" ]; then
       echo "A push has the same time as the label: ambiguous approved SHA." >&2
       return 1
     fi
-    if [[ "$ts" < "$1" ]] && { [ -z "$best_ts" ] || [[ "$ts" > "$best_ts" ]]; }; then
-      best="$sha" best_ts="$ts"
+    if [ "$e" -lt "$at" ] && { [ -z "$best_e" ] || [ "$e" -gt "$best_e" ]; }; then
+      best="$sha" best_e="$e"
+    elif [ "$e" -lt "$at" ] && [ "$e" -eq "$best_e" ] && [ "$sha" != "$best" ]; then
+      echo "Two pushes at the same time before the label: ambiguous." >&2
+      return 1
     fi
   done <<<"$entries"
   if ! [[ "$best" =~ ^[0-9a-f]{40}$ ]] || [[ "$best" =~ ^0+$ ]]; then
@@ -163,11 +182,18 @@ approved_sha_at() {
 
 # git on bare repository $1 only, whatever GIT_* variables the caller has
 # (a git hook sets GIT_DIR and GIT_INDEX_FILE).
+# No injected config either: GIT_CONFIG_* variables are dropped, and system
+# and global config files are ignored.
 bare_git() {
-  local dir="$1"
+  local dir="$1" v unset=()
   shift
-  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
-    -u GIT_ALTERNATE_OBJECT_DIRECTORIES -u GIT_COMMON_DIR -u GIT_NAMESPACE \
+  for v in $(compgen -e); do
+    case "$v" in GIT_CONFIG_*) unset+=(-u "$v") ;; esac
+  done
+  env "${unset[@]}" -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+    -u GIT_OBJECT_DIRECTORY -u GIT_ALTERNATE_OBJECT_DIRECTORIES \
+    -u GIT_COMMON_DIR -u GIT_NAMESPACE -u GIT_CONFIG_PARAMETERS \
+    -u GIT_CONFIG_COUNT GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
     GIT_TERMINAL_PROMPT=0 git --git-dir="$dir" "$@"
 }
 
@@ -198,6 +224,10 @@ same_patch() {
     echo "Same-patch check for $label: no labeled event, no approval record: drop."
     return 1
   fi
+  if [ "${HEAD_REPO:-}" != "$REPO" ]; then
+    echo "Same-patch check for $label: head repository ${HEAD_REPO:-unknown} is not $REPO (fork): drop."
+    return 1
+  fi
   if ! [[ "${HEAD_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || [ -z "${BASE_REF:-}" ]; then
     echo "Same-patch check for $label: head SHA or base branch unknown: drop."
     return 1
@@ -207,7 +237,10 @@ same_patch() {
     return 1
   fi
   APPROVED_SHA="$sha"
-  url="${GATE_GIT_URL:-https://github.com/$REPO.git}"
+  url="https://github.com/$REPO.git"
+  if [ "${K_GATE_TEST:-}" = 1 ] && [ -n "${GATE_GIT_URL:-}" ]; then
+    url="$GATE_GIT_URL"
+  fi
   if dir=$(mktemp -d) && bare_git "$dir" init -q --bare &&
     bare_git "$dir" fetch -q --no-tags "$url" "+refs/heads/$BASE_REF:refs/k/base" \
       "$sha" "$HEAD_SHA" >&2; then

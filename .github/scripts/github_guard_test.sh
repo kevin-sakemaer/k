@@ -54,6 +54,8 @@ chmod +x "$WORK/bin/gh"
 # V2 rebases V1 onto C1 (same patch). V3 resolves a conflict differently
 # (changed patch). V4 only changes whitespace. V5A and V5B are V1 and V2
 # with different binary contents.
+# VM is V2 with lib/x.txt made executable. VSA adds lib/s as a file
+# and VSB (rebased) as a symlink with the same content.
 # E0 and E1 have an empty diff from main. VP adds a protected file.
 make_origin() {
   local o="$WORK/origin"
@@ -102,6 +104,18 @@ make_origin() {
   printf '\000\001d' >"$o/lib/b.bin"
   git -C "$o" commit -qam v5b
   V5B=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vm "$V2"
+  chmod +x "$o/lib/x.txt"
+  git -C "$o" commit -qam vm
+  VM=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vsa "$V1"
+  printf 'target' >"$o/lib/s"
+  git -C "$o" add -A && git -C "$o" commit -qm vsa
+  VSA=$(git -C "$o" rev-parse HEAD)
+  git -C "$o" checkout -q -b vsb "$V2"
+  ln -s target "$o/lib/s"
+  git -C "$o" add -A && git -C "$o" commit -qm vsb
+  VSB=$(git -C "$o" rev-parse HEAD)
   git -C "$o" checkout -q -b vp "$V2"
   printf 'x\n' >"$o/.github/new.yml"
   git -C "$o" add -A && git -C "$o" commit -qm vp
@@ -152,7 +166,7 @@ fresh() {
 # check EXPECTED_CODE EXPECTED_TEXT [deleted|kept]
 check() {
   set +e
-  OUT=$(PATH="$WORK/bin:$PATH" GATE_GIT_URL="${GATE_GIT_URL:-$WORK/no-such-repo}" REPO=kevin-sakemaer/k PR=8 bash "$SCRIPT" 2>&1)
+  OUT=$(PATH="$WORK/bin:$PATH" K_GATE_TEST=1 GATE_GIT_URL="${GATE_GIT_URL:-$WORK/no-such-repo}" REPO=kevin-sakemaer/k PR=8 bash "$SCRIPT" 2>&1)
   CODE=$?
   set -e
   local ok=1
@@ -394,6 +408,12 @@ rebase_case() {
   printf '%s 2026-10-20T09:00:00Z\n%s 2026-10-20T11:00:00Z\n' "$3" "$4" >"$MOCK/activity.out"
   export GATE_GIT_URL="$ORIGIN"
 }
+# real_mismatch: both patch-ids were computed and differ (not an error).
+real_mismatch() {
+  if [ "$(grep -c '^Patch-id (stable verbatim) at .*: [0-9a-f]\{40\} [0-9a-f]\{40\}$' <<<"$OUT")" != 2 ]; then
+    FAILED=$((FAILED + 1)); echo "FAIL - $CASE (patch-ids not both computed)"
+  fi
+}
 no_marker() {
   if grep -q 'issues/8/comments' "$MOCK/calls"; then
     FAILED=$((FAILED + 1)); echo "FAIL - $CASE (marker comment written)"
@@ -423,6 +443,7 @@ check 1 "$L predates the latest push" deleted
 
 rebase_case "whitespace-only change in a protected file removes the label" synchronize "$V1" "$V4" ".github/w.yml lib/x.txt"
 check 1 "the Reviewer must add the label" deleted
+real_mismatch
 
 rebase_case "empty diff on both sides removes the label" synchronize "$E0" "$E1" ""
 check 0 "No protected path changed." deleted
@@ -442,6 +463,30 @@ check 1 "the Reviewer must add the label" deleted
 rebase_case "marker comment error removes the label" synchronize "$V1" "$V2" ".github/w.yml"
 echo 500 >"$MOCK/comments.status"
 check 1 "Could not write the approved-by-rebase marker comment" deleted
+
+rebase_case "fork head with the same patch removes the label" synchronize "$V1" "$V2" ".github/w.yml lib/x.txt"
+printf '%s\tsomeone/k\tfeature\t2\tmain\n' "$V2" >"$MOCK/pulls.out"
+check 1 "(fork): drop" deleted
+no_marker
+
+rebase_case "same-repository head with the same patch keeps the label" synchronize "$V1" "$V2" ".github/w.yml lib/x.txt"
+check 0 "same patch: keep" kept
+
+rebase_case "mode change (+x) removes the label" synchronize "$V1" "$VM" ".github/w.yml lib/x.txt"
+check 1 "the Reviewer must add the label" deleted
+real_mismatch
+
+rebase_case "file replaced by a symlink removes the label" synchronize "$VSA" "$VSB" ".github/w.yml lib/s lib/x.txt"
+check 1 "the Reviewer must add the label" deleted
+real_mismatch
+
+rebase_case "malformed push time removes the label" synchronize "$V1" "$V2" ".github/w.yml"
+printf '%s 2026-10-20T09:00:00.123Z\n%s 2026-10-20T11:00:00Z\n' "$V1" "$V2" >"$MOCK/activity.out"
+check 1 "Malformed push time" deleted
+
+rebase_case "malformed label time removes the label" synchronize "$V1" "$V2" ".github/w.yml"
+echo "labeled $L 2026-10-20T10:00:00+02:00" >"$MOCK/timeline.out"
+check 1 "Malformed label time" deleted
 
 rebase_case "reopened with the same patch still removes the label" reopened "$V1" "$V2" ".github/w.yml"
 check 1 "the Reviewer must add the label" deleted
