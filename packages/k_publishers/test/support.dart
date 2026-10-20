@@ -26,12 +26,14 @@ final class FakeClient implements PublisherClient {
 }
 
 /// Writes a workspace under [root]: the root pubspec with [rootDeps] and one
-/// member `packages/a` with [memberDeps], plus `k.yaml` with [exceptions].
+/// member `packages/a` with [memberDeps], plus `k.yaml` with [exceptions]
+/// and [registryTimeoutSeconds].
 void writeWorkspace(
   Directory root, {
   String rootDeps = '',
   String memberDeps = '',
   String exceptions = '{}',
+  int registryTimeoutSeconds = 30,
 }) {
   Directory('${root.path}/packages/a').createSync(recursive: true);
   File('${root.path}/pubspec.yaml')
@@ -40,7 +42,8 @@ void writeWorkspace(
       .writeAsStringSync('name: a\n$memberDeps');
   File('${root.path}/k.yaml').writeAsStringSync(
     'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
-    'dependencies: {exceptions: $exceptions}\n'
+    'dependencies: {exceptions: $exceptions, '
+    'registry_timeout_seconds: $registryTimeoutSeconds}\n'
     'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
     'close_issues: {lookback_hours: 72}\n'
     'workflows: {max_timeout_minutes: 20, write_scopes: []}\n',

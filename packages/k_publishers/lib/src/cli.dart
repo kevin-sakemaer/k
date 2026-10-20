@@ -7,12 +7,16 @@ import 'package:k_publishers/src/pub_client.dart';
 
 const String _usage = 'Usage: k_publishers [repository-root]';
 
-/// Runs the command line tool with [client] and returns its exit code.
+/// Creates the [PublisherClient] used for the lookups, bounded by [timeout].
+typedef PublisherClientFactory = PublisherClient Function(Duration timeout);
+
+/// Runs the command line tool and returns its exit code.
 ///
 /// The repository root is the only optional entry of [arguments] and
-/// defaults to the current directory. The exceptions come from the
-/// `dependencies` section of `k.yaml`, read and validated by
-/// `package:k_config`.
+/// defaults to the current directory. The exceptions and the registry
+/// timeout come from the `dependencies` section of `k.yaml`, read and
+/// validated by `package:k_config`. [createClient] is called once, with that
+/// timeout, after `k.yaml` is valid.
 ///
 /// Exit codes: 0 when every direct dependency is allowed; 1 when a problem is
 /// found or when `k.yaml` is invalid; 64 on a usage error. Problems are
@@ -21,7 +25,7 @@ Future<int> runCli(
   List<String> arguments,
   StringSink out,
   StringSink err,
-  PublisherClient client,
+  PublisherClientFactory createClient,
 ) async {
   if (arguments.length > 1 || arguments.any((a) => a.startsWith('-'))) {
     err.writeln(_usage);
@@ -45,7 +49,7 @@ Future<int> runCli(
   final List<String> problems = await checkPublishers(
     readDirectDependencies(root),
     config.dependencies,
-    client,
+    createClient(config.dependencies.registryTimeout),
   );
   if (problems.isEmpty) {
     out.writeln('Every direct dependency has an allowed publisher.');

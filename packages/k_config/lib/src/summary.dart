@@ -36,6 +36,11 @@ String renderSummary(KConfig config) {
       'Allowed publishers: '
       '${DependenciesConfig.allowedPublishers.join(', ')}.',
     )
+    ..writeln()
+    ..writeln(
+      'Registry timeout: '
+      '${config.dependencies.registryTimeoutSeconds} seconds.',
+    )
     ..writeln();
   _table(
     buffer,

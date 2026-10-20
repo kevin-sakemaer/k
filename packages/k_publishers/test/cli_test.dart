@@ -9,22 +9,33 @@ void main() {
   late Directory root;
   late StringBuffer out;
   late StringBuffer err;
+  late List<Duration> timeouts;
   final client = FakeClient({'test': 'dart.dev', 'provider': 'other.dev'});
 
   setUp(() {
     root = Directory.systemTemp.createTempSync('k_pub_cli_');
     out = StringBuffer();
     err = StringBuffer();
+    timeouts = [];
   });
   tearDown(() => root.deleteSync(recursive: true));
 
   Future<int> run(List<String> arguments) =>
-      runCli(arguments, out, err, client);
+      runCli(arguments, out, err, (timeout) {
+        timeouts.add(timeout);
+        return client;
+      });
 
   test('exits 0 when every dependency is allowed', () async {
     writeWorkspace(root, rootDeps: 'dev_dependencies:\n  test: ^1.0.0\n');
     expect(await run([root.path]), 0);
     expect(out.toString(), contains('Every direct dependency'));
+  });
+
+  test('bounds the lookups with the timeout from k.yaml', () async {
+    writeWorkspace(root, registryTimeoutSeconds: 7);
+    expect(await run([root.path]), 0);
+    expect(timeouts, [const Duration(seconds: 7)]);
   });
 
   test('exits 1 on a disallowed publisher', () async {
@@ -47,6 +58,7 @@ void main() {
     writeWorkspace(root, exceptions: '{ghost: {reason: r, approved_by: K}}');
     expect(await run([root.path]), 1);
     expect(err.toString(), contains('k.yaml is invalid'));
+    expect(timeouts, isEmpty);
   });
 
   test('exits 64 on usage errors', () async {

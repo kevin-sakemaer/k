@@ -173,7 +173,7 @@ void main() {
       test('reads a flow style coverage section', () {
         const source =
             'coverage: {default: 100, tool_version: 1.16.0, overrides: {}}\n'
-            'dependencies: {exceptions: {}}\n'
+            'dependencies: {exceptions: {}, registry_timeout_seconds: 30}\n'
             'comments: {include: ["**.dart"], exclude: [], exceptions: []}\n'
             'close_issues: {lookback_hours: 72}\n'
             'workflows: {max_timeout_minutes: 20, write_scopes: []}\n';

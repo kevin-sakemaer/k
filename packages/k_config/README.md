@@ -47,6 +47,7 @@ dependencies:
     some_pkg:               # Must be a direct dependency of the workspace.
       reason: "Why this dependency is needed."
       approved_by: "Kevin, YYYY-MM-DD, via Grok Bot."
+  registry_timeout_seconds: 30  # Integer from 1 to 300, in seconds.
 comments:
   exceptions:               # Required, may be [].
     - path: packages/foo/lib/vendored.dart   # Existing file, relative path.
@@ -62,7 +63,8 @@ workflows:
 
 Direct dependencies published by `dart.dev`, `tools.dart.dev` or
 `labs.dart.dev` are always allowed; this list is fixed in the code and an
-`allowed_publishers` key fails as an unknown key.
+`allowed_publishers` key fails as an unknown key. `registry_timeout_seconds`
+bounds the connection and the whole response of each publisher lookup.
 
 Validation fails on:
 
@@ -74,6 +76,8 @@ Validation fails on:
   string or boolean);
 - a `close_issues.lookback_hours` that is not a plain decimal integer from 1
   to 720;
+- a `dependencies.registry_timeout_seconds` that is not a plain decimal
+  integer from 1 to 300;
 - a `coverage.tool_version` that is not an exact `MAJOR.MINOR.PATCH` string;
 - a missing or blank `reason`;
 - a coverage override for a package that is not in the workspace, or whose

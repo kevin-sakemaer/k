@@ -33,11 +33,11 @@ final class PubDevClient implements PublisherClient {
   /// [PublisherClient] that queries the publisher API of the registry.
   ///
   /// [baseUri] defaults to [DependenciesConfig.registryUrl]; tests point it
-  /// to a local server. [timeout] bounds the connection and the whole
-  /// request; it defaults to [DependenciesConfig.registryTimeout].
-  new(this._http, {Uri? baseUri, Duration? timeout})
-    : _base = baseUri ?? Uri.parse(DependenciesConfig.registryUrl),
-      _timeout = timeout ?? DependenciesConfig.registryTimeout {
+  /// to a local server. `timeout` bounds the connection and the whole
+  /// request; the command line tool passes
+  /// [DependenciesConfig.registryTimeout], read from `k.yaml`.
+  new(this._http, {required this._timeout, Uri? baseUri})
+    : _base = baseUri ?? Uri.parse(DependenciesConfig.registryUrl) {
     _http.connectionTimeout = _timeout;
   }
 
