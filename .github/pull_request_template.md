@@ -2,6 +2,8 @@
 
 ## Linked issue
 
+<!-- Use `Closes #N` only if this PR fully delivers the issue. Otherwise use `Part of #N` or `Refs #N` and no closing keyword anywhere. -->
+
 Closes #
 
 ## Summary
@@ -25,6 +27,7 @@ Closes #
 - [ ] No direct dependency outside dart.dev/tools.dart.dev/labs.dart.dev. An exception needs both an entry in `k.yaml` with an explicit reason **and** approval via Grok Bot, linked in this PR
 - [ ] Settings live in `k.yaml`, nothing hard-coded
 - [ ] All acceptance criteria of the linked issue are met
+- [ ] `Closes #N` only if this PR fully delivers the issue; a partial PR (`Part of #N` / `Refs #N`) has no closing keyword (close/fix/resolve and their forms followed by `#N`) in its title, description or commits
 - [ ] `AGENTS.md` updated if the workflow or rules changed
 
 ## Acceptance criteria

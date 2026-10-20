@@ -21,6 +21,7 @@ Mandatory before every commit and push (#16). The Reviewer may reject without de
 4. `dart test` with 100% coverage (or the k.yaml override).
 5. Same scripts as CI run locally (k_config, publishers check, comments check).
 6. Self-review of `git diff origin/main` against the issue acceptance criteria and Reviewer rules: English only, `///` comments only, no hard-coded values outside k.yaml.
+7. Issue references: a partial PR (`Part of #N` or `Refs #N`) contains no closing keyword for that issue anywhere (title, description, commit messages): no `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves` or `resolved` followed by `#N`. `Closes #N` is allowed only when the PR fully delivers issue #N.
 
 Points 2 to 5 live in a single script, `tool/check.sh`, which the `test` CI job also runs; `tool/check_test.sh` tests it. Install the hooks once per clone:
 
@@ -35,11 +36,11 @@ tool/install_hooks.sh
 - Coverage threshold: `coverage.default` in `k.yaml`, a YAML integer from 0 to 100. If `k.yaml` or `coverage.default` is missing, the threshold defaults to **100%** and the check still fails (`k.yaml with coverage.default is required; defaulting to 100%`). Coverage is never disabled.
 - Coverage counts every `lib/**/*.dart` file: a file that no test loads counts as 0%.
 - Checks whose script is not on `main` yet (k_config #13, publishers #4, comments #9) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
-- Point 6 stays manual.
+- Points 6 and 7 stay manual.
 
 ## Workflow
 1. **One issue = one branch = one PR.** Never push directly to `main`.
-2. Open the PR referencing the issue (`Closes #N`).
+2. Open the PR referencing the issue: `Closes #N` only if the PR fully delivers the issue; otherwise `Part of #N` or `Refs #N`, with no closing keyword (`close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, `resolved` followed by `#N`) anywhere in the title, description or commit messages (see Pre-commit checklist point 7).
 3. Required checks on `main`: **`test`**, **`review-gate`** and **`github-guard`**.
    - `test`: runs `tool/check.sh` (see Pre-commit checklist). It always runs the review-gate script tests; it fails if `pubspec.yaml` is missing, then runs format, analyze, the repository scripts, tests and coverage, and fails if any workspace package has no tests or no member package is tested.
    - `review-gate`: fails without the `review:approved` label or when `review:changes-requested` is present.
