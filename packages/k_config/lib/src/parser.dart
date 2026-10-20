@@ -35,8 +35,10 @@ final class KConfigInvalid extends KConfigResult {
 /// Validation fails on an unknown or missing key at any level, a wrong type,
 /// a threshold outside 0 to 100, an empty or missing `reason`, a duplicated
 /// key, a coverage override for a package missing from the workspace, a
-/// dependency exception for a package that is not a direct dependency, and
-/// a comment exception for a missing or duplicated file.
+/// dependency exception for a package that is not a direct dependency, a
+/// comment exception for a missing or duplicated file, a
+/// `workflows.max_timeout_minutes` that is not an integer greater than 0,
+/// and a duplicated or malformed `workflows.write_scopes` entry.
 KConfigResult parseKConfig(String source, Workspace workspace) {
   final Object? document;
   try {
@@ -81,6 +83,7 @@ final class _Validator {
       'dependencies',
       'comments',
       'close_issues',
+      'workflows',
     });
     if (map == null) {
       return null;
@@ -109,10 +112,17 @@ final class _Validator {
       'close_issues',
       closeIssues,
     );
+    final WorkflowsConfig? workflowsConfig = field(
+      map,
+      path,
+      'workflows',
+      workflows,
+    );
     if (coverageConfig == null ||
         dependenciesConfig == null ||
         commentsConfig == null ||
-        closeIssuesConfig == null) {
+        closeIssuesConfig == null ||
+        workflowsConfig == null) {
       return null;
     }
     return KConfig(
@@ -120,6 +130,7 @@ final class _Validator {
       dependencies: dependenciesConfig,
       comments: commentsConfig,
       closeIssues: closeIssuesConfig,
+      workflows: workflowsConfig,
     );
   }
 
@@ -378,6 +389,124 @@ final class _Validator {
     }
     if (!workspace.containsFile(value)) {
       error(path, 'file "$value" not found.');
+      return null;
+    }
+    return value;
+  }
+
+  WorkflowsConfig? workflows(Object? value, String path) {
+    final Map<String, Object?>? map = strictMap(value, path, const {
+      'max_timeout_minutes',
+      'write_scopes',
+    });
+    if (map == null) {
+      return null;
+    }
+    final int? maxTimeout = field(
+      map,
+      path,
+      'max_timeout_minutes',
+      positiveInteger,
+    );
+    final List<WriteScopeException>? scopes = field(
+      map,
+      path,
+      'write_scopes',
+      writeScopes,
+    );
+    if (maxTimeout == null || scopes == null) {
+      return null;
+    }
+    return WorkflowsConfig(maxTimeoutMinutes: maxTimeout, writeScopes: scopes);
+  }
+
+  List<WriteScopeException>? writeScopes(Object? value, String path) {
+    if (value is! List) {
+      error(path, 'must be a list.');
+      return null;
+    }
+    final scopes = <WriteScopeException>[];
+    var valid = true;
+    for (final (index, item) in value.indexed) {
+      final itemPath = '$path[$index]';
+      final WriteScopeException? scope = writeScope(item, itemPath);
+      if (scope == null) {
+        valid = false;
+      } else if (scopes.any(
+        (known) =>
+            known.workflow == scope.workflow &&
+            known.job == scope.job &&
+            known.scope == scope.scope,
+      )) {
+        valid = false;
+        error(
+          itemPath,
+          'duplicated write scope "${scope.scope}" of job "${scope.job}" in '
+          '"${scope.workflow}".',
+        );
+      } else {
+        scopes.add(scope);
+      }
+    }
+    return valid ? List.unmodifiable(scopes) : null;
+  }
+
+  WriteScopeException? writeScope(Object? value, String path) {
+    final Map<String, Object?>? map = strictMap(value, path, const {
+      'workflow',
+      'job',
+      'scope',
+      'reason',
+    });
+    if (map == null) {
+      return null;
+    }
+    final String? workflow = field(map, path, 'workflow', workflowFile);
+    final String? job = field(map, path, 'job', name);
+    final String? scope = field(map, path, 'scope', name);
+    final String? scopeReason = field(map, path, 'reason', reason);
+    if (workflow == null ||
+        job == null ||
+        scope == null ||
+        scopeReason == null) {
+      return null;
+    }
+    return WriteScopeException(
+      workflow: workflow,
+      job: job,
+      scope: scope,
+      reason: scopeReason,
+    );
+  }
+
+  /// A file name with a `.yml` or `.yaml` extension and no directory.
+  static final RegExp _workflowFile = RegExp(r'^[A-Za-z0-9_.-]+\.ya?ml$');
+
+  String? workflowFile(Object? value, String path) {
+    if (value is! String || !_workflowFile.hasMatch(value)) {
+      error(
+        path,
+        'must be the file name of a workflow in .github/workflows, such as '
+        '"test.yml", found ${value is String ? '"$value"' : value}.',
+      );
+      return null;
+    }
+    return value;
+  }
+
+  String? name(Object? value, String path) {
+    if (value is! String || value.trim().isEmpty || value.trim() != value) {
+      error(path, 'must be a non-empty string without surrounding spaces.');
+      return null;
+    }
+    return value;
+  }
+
+  int? positiveInteger(Object? value, String path) {
+    final String? source = sourceText[path];
+    final String text = source == null || source.isEmpty ? '$value' : source;
+    if (value is! int || !_decimalInteger.hasMatch(text) || value <= 0) {
+      error(path, 'must be an integer greater than 0, found $text.');
       return null;
     }
     return value;

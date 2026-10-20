@@ -1,3 +1,4 @@
+import 'package:k_config/k_config.dart';
 import 'package:k_workflows/k_workflows.dart';
 import 'package:test/test.dart';
 
@@ -19,7 +20,31 @@ String workflow({
     '    steps:\n'
     '      $step\n';
 
-List<String> lint(String source) => lintWorkflow(source, 'w.yml');
+/// Workflow settings without write scopes and with a 10 minute limit.
+const WorkflowsConfig noWrites = WorkflowsConfig(
+  maxTimeoutMinutes: 10,
+  writeScopes: [],
+);
+
+/// Settings that declare the `write` of [scope] for job `a` of `w.yml`.
+WorkflowsConfig declaring(String scope, {String workflow = 'w.yml'}) =>
+    WorkflowsConfig(
+      maxTimeoutMinutes: 10,
+      writeScopes: [
+        WriteScopeException(
+          workflow: workflow,
+          job: 'a',
+          scope: scope,
+          reason: 'Needed by the test.',
+        ),
+      ],
+    );
+
+List<String> lint(String source, {WorkflowsConfig config = noWrites}) =>
+    lintWorkflows({'w.yml': source}, config);
+
+/// Returns [text]: wraps one expected error split over several lines.
+String message(String text) => text;
 
 void main() {
   test('a hardened workflow passes', () {
@@ -194,7 +219,7 @@ void main() {
       expect(lint(workflow(job: '    timeout-minutes: 5')), isEmpty);
     });
 
-    test('every scope accepts read, write and none', () {
+    test('every scope accepts read and none, and a declared write', () {
       for (final String scope in jobPermissionScopes) {
         for (final level in <String>['read', 'write', 'none']) {
           expect(
@@ -204,11 +229,78 @@ void main() {
                     '    timeout-minutes: 5\n    permissions:\n'
                     '      $scope: $level',
               ),
+              config: level == 'write' ? declaring(scope) : noWrites,
             ),
             isEmpty,
+            reason: '$scope: $level',
           );
         }
       }
+    });
+  });
+
+  group('write scopes', () {
+    String writing(String scope) => workflow(
+      job: '    timeout-minutes: 5\n    permissions:\n      $scope: write',
+    );
+
+    test('an undeclared job-level write fails', () {
+      expect(lint(writing('contents')), [
+        message(
+          "w.yml: job 'a': \"contents: write\" is not declared in "
+          'workflows.write_scopes of k.yaml; declare it with a reason or '
+          'grant read.',
+        ),
+      ]);
+    });
+
+    test('a write declared for another scope, job or workflow fails', () {
+      expect(lint(writing('contents'), config: declaring('pull-requests')), [
+        contains('"contents: write" is not declared'),
+        contains("stale entry: job 'a' of w.yml"),
+      ]);
+      expect(
+        lint(
+          writing('contents').replaceFirst('  a:', '  b:'),
+          config: declaring('contents'),
+        ),
+        [
+          contains("job 'b': \"contents: write\" is not declared"),
+          contains("stale entry: job 'a' of w.yml"),
+        ],
+      );
+      expect(
+        lint(
+          writing('contents'),
+          config: declaring('contents', workflow: 'x.yml'),
+        ),
+        [
+          contains('"contents: write" is not declared'),
+          contains("stale entry: job 'a' of x.yml"),
+        ],
+      );
+    });
+
+    test('a declared entry that the job no longer grants is stale', () {
+      expect(lint(workflow(), config: declaring('contents')), [
+        message(
+          'k.yaml: workflows.write_scopes: stale entry: job '
+          "'a' of w.yml does not grant \"contents: write\"; "
+          'remove the entry.',
+        ),
+      ]);
+      expect(lint(workflow(), config: declaring('statuses')), [
+        contains('does not grant "statuses: write"'),
+      ]);
+    });
+
+    test('workflows are matched by file name', () {
+      expect(
+        lintWorkflows({
+          '.github/workflows/w.yml': writing('contents'),
+        }, declaring('contents')),
+        isEmpty,
+      );
     });
   });
 
@@ -223,6 +315,16 @@ void main() {
           contains('timeout-minutes must be a positive integer'),
         ]);
       }
+    });
+
+    test('a timeout above workflows.max_timeout_minutes fails', () {
+      expect(lint(workflow(job: '    timeout-minutes: 10')), isEmpty);
+      expect(lint(workflow(job: '    timeout-minutes: 11')), [
+        message(
+          "w.yml: job 'a': timeout-minutes is 11, above "
+          'workflows.max_timeout_minutes of k.yaml (10).',
+        ),
+      ]);
     });
 
     test('invalid YAML, a non-mapping workflow or job, and no jobs fail', () {

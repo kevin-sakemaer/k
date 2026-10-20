@@ -79,8 +79,9 @@ tool/install_hooks.sh
   - a Docker image pinned by digest (`docker://image@sha256:<64 hex>`).
 - Every workflow sets exactly `permissions: {}` at the top level.
 - Job `permissions`, when set, is a mapping of explicit GitHub scopes (`contents`, `pull-requests`, ...) to `read`, `write` or `none`. A shorthand such as `write-all` or `read-all` and an unknown scope are rejected. Each job grants only the scopes it uses.
-- Every job that runs steps sets a positive integer `timeout-minutes`. A job that calls a reusable workflow cannot set one.
-- `packages/k_workflows` enforces these rules on `.github/workflows/*.yml|yaml` with a real YAML parse (`package:yaml`), so flow mappings, quoted keys and comments cannot hide a reference, a duplicated key is invalid YAML, and YAML merge keys (`<<`) are rejected anywhere. `tool/check.sh` runs it in the required `test` check.
+- Every job-level `write` is an explicit exception declared in `workflows.write_scopes` of `k.yaml`, with its workflow file name, job, scope and reason (#39). An undeclared `write` fails, and so does a declared entry that no longer matches a job granting that `write` (stale exception). The `k-config` job summary lists every declared write scope.
+- Every job that runs steps sets a positive integer `timeout-minutes`, at most `workflows.max_timeout_minutes` of `k.yaml` (#39). A job that calls a reusable workflow cannot set one.
+- `packages/k_workflows` reads the `workflows` section of `k.yaml` through `loadKConfig` and enforces these rules on `.github/workflows/*.yml|yaml` with a real YAML parse (`package:yaml`), so flow mappings, quoted keys and comments cannot hide a reference, a duplicated key is invalid YAML, and YAML merge keys (`<<`) are rejected anywhere. `tool/check.sh` runs it in the required `test` check.
 - `concurrency` uses `cancel-in-progress: true` for `test` and `k-config`. The gates (`review-gate`, `github-guard`) and `auto-merge` keep `cancel-in-progress: false` on purpose: a newer event must never cancel a run that removes a stale approval label.
 - `pubspec.lock` is committed, and every `dart pub get` in CI runs with `--enforce-lockfile`, so an out-of-sync lockfile fails the job.
 - The pub cache (`~/.pub-cache`) is cached with `actions/cache`, keyed on the hash of every `pubspec.lock`.
@@ -121,15 +122,23 @@ comments:
   exceptions:               # Required, may be [].
     - path: packages/foo/lib/vendored.dart   # Existing file, relative path.
       reason: "Why this file needs non-documentation comments."
+workflows:
+  max_timeout_minutes: 20   # Integer greater than 0, largest job timeout-minutes.
+  write_scopes:             # Required, may be [].
+    - workflow: test.yml    # File name in .github/workflows.
+      job: test             # Job identifier in that workflow.
+      scope: contents       # Scope that the job grants with write.
+      reason: "Why the job needs to write with this scope."
 ```
 
 - `coverage`: `default` applies to every package; an override lowers it for one package and must be strictly lower than `default`. `tool/check.sh` (#5) enforces, per package, the line coverage of `lib/` against its override or `coverage.default`, read through `k_config --get coverage.thresholds`; below the threshold the required `test` check fails. Every measured package gets a threshold, including the workspace root when it has a `lib/`; the root `pubspec.yaml` must therefore have a `name`, or `k_config` fails. The coverage of each package is added to the job summary, even when the package fails, next to the k.yaml summary that lists every active override with its reason. The lcov report of each package is uploaded as the `lcov-<PR>-<sha>` artifact of the `test` job, even when the job fails; a successful run without any report fails. `tool_version` is the exact version of `package:coverage` (tools.dart.dev) that `tool/check.sh` activates to build the lcov report.
 - `dependencies`: the publishers `dart.dev`, `tools.dart.dev` and `labs.dart.dev` are fixed in `k_config` and cannot be changed from `k.yaml` (an `allowed_publishers` key fails as an unknown key). Any other direct dependency needs an entry in `exceptions`.
 - `comments`: `include` and `exclude` are the globs of the files checked by the comments check (only `.dart` files are read). `exceptions` lists the files allowed to contain non-documentation comments, each with a reason. An exception that is not needed fails the check.
 - `close_issues`: `lookback_hours` is how far back, in hours, the `close-issues` sweep (#40) looks for PRs merged into `main`. It must cover the longest expected gap between two successful runs (72 hours by default, at most 720).
+- `workflows`: `max_timeout_minutes` bounds the `timeout-minutes` of every job, and `write_scopes` lists every job-level `write` permission allowed in `.github/workflows`, each with a reason. `k_workflows` fails on an undeclared `write` and on a stale entry.
 - `k_config` is the only reader of `k.yaml`: shell scripts read scalars with `k_config --get <key>`, and Dart code reads lists through the `loadKConfig` library function.
 
-Validation fails on an unknown or missing key at any level, a duplicated key, a wrong type, a threshold that is not a plain decimal integer from 0 to 100 (no decimal, exponent, hexadecimal, octal, sign, separator, leading zero, string or boolean), a `tool_version` that is not an exact `MAJOR.MINOR.PATCH` string, a coverage override not strictly lower than `coverage.default` or for a package outside the workspace, a missing or blank `reason` (or `approved_by`), a dependency exception for a package that is not a direct dependency, a comment exception for a missing or duplicated file, and a comment `include` list that is empty, or an `include` or `exclude` entry that is blank, not a string or duplicated.
+Validation fails on an unknown or missing key at any level, a duplicated key, a wrong type, a threshold that is not a plain decimal integer from 0 to 100 (no decimal, exponent, hexadecimal, octal, sign, separator, leading zero, string or boolean), a `tool_version` that is not an exact `MAJOR.MINOR.PATCH` string, a coverage override not strictly lower than `coverage.default` or for a package outside the workspace, a missing or blank `reason` (or `approved_by`), a dependency exception for a package that is not a direct dependency, a comment exception for a missing or duplicated file, a comment `include` list that is empty, or an `include` or `exclude` entry that is blank, not a string or duplicated, a `workflows.max_timeout_minutes` that is not a plain decimal integer greater than 0, and a `workflows.write_scopes` entry whose `workflow` is not a `.yml` or `.yaml` file name without directory, whose `job` or `scope` is blank or padded, or that duplicates another entry.
 
 ### Adding an exception
 1. Get Kevin's approval first: **every exception requires Kevin's agreement** (through Grok Bot).

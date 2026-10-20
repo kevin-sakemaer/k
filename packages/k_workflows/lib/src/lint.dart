@@ -1,3 +1,4 @@
+import 'package:k_config/k_config.dart';
 import 'package:yaml/yaml.dart';
 
 /// Permission scopes that a job may grant, from the GitHub Actions workflow
@@ -34,22 +35,63 @@ final RegExp _digest = RegExp(r'@sha256:[0-9a-f]{64}$');
 /// A version comment after a pinned reference, such as `# v1.2.3`.
 final RegExp _versionComment = RegExp(r'#\s*v\d');
 
-/// Returns every hardened CI rule broken by the workflow [source], each
-/// message prefixed with [path].
+/// Returns every hardened CI rule broken by the workflows of [sources], and
+/// every entry of [config] that no longer matches them.
+///
+/// [sources] maps the path of each workflow file, relative to the repository
+/// root, to its content; messages are prefixed with that path. A workflow is
+/// matched against `workflows.write_scopes` of `k.yaml` by its file name.
 ///
 /// The rules:
 /// - the file is valid YAML without duplicated keys;
 /// - the top level sets exactly `permissions: {}`;
 /// - `jobs` is a non-empty mapping of jobs;
-/// - every job that runs steps sets a positive integer `timeout-minutes`
-///   (a job that calls a reusable workflow cannot set one);
+/// - every job that runs steps sets a positive integer `timeout-minutes` no
+///   larger than [WorkflowsConfig.maxTimeoutMinutes] (a job that calls a
+///   reusable workflow cannot set one);
 /// - job `permissions`, when set, is a mapping of known scopes to `read`,
 ///   `write` or `none`, never a shorthand such as `write-all` or `read-all`;
+/// - every job-level `write` is declared in [WorkflowsConfig.writeScopes],
+///   and every declared entry matches a job that grants that `write`;
 /// - no mapping uses the YAML merge key `<<`;
 /// - every `uses:` of a job or a step is a local action (`./...`), a Docker
 ///   image pinned by digest (`docker://...@sha256:<64 hex>`), or
 ///   `owner/repo[/path]@<40 hex>` (exactly one `@`) followed on its line by a `# v...` comment.
-List<String> lintWorkflow(String source, String path) {
+List<String> lintWorkflows(
+  Map<String, String> sources,
+  WorkflowsConfig config,
+) {
+  final errors = <String>[];
+  final Set<(String, String, String)> granted = {};
+  for (final MapEntry(key: path, value: source) in sources.entries) {
+    final String workflow = path.split('/').last;
+    errors.addAll(
+      _lintWorkflow(
+        source,
+        path,
+        config,
+        (job, scope) => granted.add((workflow, job, scope)),
+      ),
+    );
+  }
+  for (final WriteScopeException declared in config.writeScopes) {
+    if (!granted.contains((declared.workflow, declared.job, declared.scope))) {
+      errors.add(
+        'k.yaml: workflows.write_scopes: stale entry: job '
+        "'${declared.job}' of ${declared.workflow} does not grant "
+        '"${declared.scope}: write"; remove the entry.',
+      );
+    }
+  }
+  return errors;
+}
+
+List<String> _lintWorkflow(
+  String source,
+  String path,
+  WorkflowsConfig config,
+  void Function(String job, String scope) onWrite,
+) {
   final errors = <String>[];
   void report(String message) => errors.add('$path: $message');
   final YamlNode document;
@@ -76,15 +118,48 @@ List<String> lintWorkflow(String source, String path) {
     report('jobs must be a non-empty mapping.');
     return errors;
   }
+  final String workflow = path.split('/').last;
   for (final MapEntry(:key, :value) in jobs.nodes.entries) {
     final job = '${(key as YamlNode).value}';
     if (value is! YamlMap) {
       report("job '$job' must be a mapping.");
       continue;
     }
-    _lintJob(value, source, (message) => report("job '$job': $message"));
+    _lintJob(
+      value,
+      source,
+      _JobContext(
+        workflow: workflow,
+        job: job,
+        config: config,
+        report: (message) => report("job '$job': $message"),
+        onWrite: (scope) => onWrite(job, scope),
+      ),
+    );
   }
   return errors;
+}
+
+/// What [_lintJob] needs to know about the job it checks.
+final class _JobContext {
+  const new({
+    required this.workflow,
+    required this.job,
+    required this.config,
+    required this.report,
+    required this.onWrite,
+  });
+
+  final String workflow;
+  final String job;
+  final WorkflowsConfig config;
+  final void Function(String message) report;
+  final void Function(String scope) onWrite;
+
+  bool declares(String scope) => config.writeScopes.any(
+    (entry) =>
+        entry.workflow == workflow && entry.job == job && entry.scope == scope,
+  );
 }
 
 bool _hasMergeKey(YamlNode node) => switch (node) {
@@ -96,18 +171,25 @@ bool _hasMergeKey(YamlNode node) => switch (node) {
   _ => false,
 };
 
-void _lintJob(YamlMap job, String source, void Function(String) report) {
+void _lintJob(YamlMap job, String source, _JobContext context) {
+  final void Function(String) report = context.report;
   final YamlNode? uses = job.nodes['uses'];
   if (uses != null) {
     _lintUses(uses, source, report);
   } else {
     final Object? timeout = job['timeout-minutes'];
+    final int max = context.config.maxTimeoutMinutes;
     if (timeout is! int || timeout <= 0) {
       report('timeout-minutes must be a positive integer.');
+    } else if (timeout > max) {
+      report(
+        'timeout-minutes is $timeout, above '
+        'workflows.max_timeout_minutes of k.yaml ($max).',
+      );
     }
   }
   if (job.containsKey('permissions')) {
-    _lintPermissions(job['permissions'], report);
+    _lintPermissions(job['permissions'], context);
   }
   final YamlNode? steps = job.nodes['steps'];
   if (steps is YamlList) {
@@ -121,7 +203,8 @@ void _lintJob(YamlMap job, String source, void Function(String) report) {
   }
 }
 
-void _lintPermissions(Object? permissions, void Function(String) report) {
+void _lintPermissions(Object? permissions, _JobContext context) {
+  final void Function(String) report = context.report;
   if (permissions is! Map) {
     report(
       'permissions must be a mapping of explicit scopes, '
@@ -134,6 +217,14 @@ void _lintPermissions(Object? permissions, void Function(String) report) {
       report('unknown permission scope "$key".');
     } else if (!_accessLevels.contains(value)) {
       report('permission "$key" must be read, write or none, not "$value".');
+    } else if (value == 'write') {
+      context.onWrite('$key');
+      if (!context.declares('$key')) {
+        report(
+          '"$key: write" is not declared in workflows.write_scopes of '
+          'k.yaml; declare it with a reason or grant read.',
+        );
+      }
     }
   }
 }

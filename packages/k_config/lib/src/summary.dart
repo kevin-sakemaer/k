@@ -66,7 +66,23 @@ String renderSummary(KConfig config) {
       'Look-back window of the close-issues sweep: '
       '${config.closeIssues.lookbackHours} hours.',
     )
+    ..writeln()
+    ..writeln('### Workflows')
+    ..writeln()
+    ..writeln(
+      'Maximum job timeout: '
+      '${config.workflows.maxTimeoutMinutes} minutes.',
+    )
     ..writeln();
+  _table(
+    buffer,
+    empty: 'No job-level write scopes.',
+    header: ['Workflow', 'Job', 'Write scope', 'Reason'],
+    rows: [
+      for (final scope in config.workflows.writeScopes)
+        [scope.workflow, scope.job, scope.scope, scope.reason],
+    ],
+  );
   return buffer.toString();
 }
 
