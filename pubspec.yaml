@@ -6,6 +6,7 @@ environment:
 
 workspace:
   - packages/k_core
+  - packages/k_comments
 
 dev_dependencies:
   test: ^1.25.0

@@ -1,0 +1,129 @@
+import 'dart:io';
+
+import 'package:k_comments/k_comments.dart';
+import 'package:test/test.dart';
+
+List<CommentKind> kinds(String source) =>
+    findViolations(source, 'a.dart').map((v) => v.kind).toList();
+
+void main() {
+  group('findViolations', () {
+    test('allows /// documentation comments', () {
+      expect(kinds('/// Doc.\nvoid f() {}\n'), isEmpty);
+      expect(kinds('void f() {\n  /// Inside.\n}\n'), isEmpty);
+    });
+
+    test('reports // line comments with line and column', () {
+      final List<CommentViolation> found = findViolations(
+        'void f() {\n  // note\n}\n',
+        'lib/a.dart',
+      );
+      expect(found, hasLength(1));
+      expect(found.single.line, 2);
+      expect(found.single.column, 3);
+      expect(found.single.kind, CommentKind.line);
+      expect(
+        found.single.toString(),
+        'lib/a.dart:2:3: line comment is not allowed, use /// only',
+      );
+    });
+
+    test('reports ignore and ignore_for_file comments', () {
+      expect(kinds('// ignore: x\nvoid f() {}\n'), <CommentKind>[
+        CommentKind.ignore,
+      ]);
+      expect(kinds('//ignore_for_file: x\nvoid f() {}\n'), <CommentKind>[
+        CommentKind.ignore,
+      ]);
+    });
+
+    test('reports block and documentation block comments', () {
+      expect(kinds('/* a */ void f() {}\n'), <CommentKind>[CommentKind.block]);
+      expect(kinds('/** a */ void f() {}\n'), <CommentKind>[
+        CommentKind.docBlock,
+      ]);
+      expect(kinds('/* a /* nested */ b */ void f() {}\n'), <CommentKind>[
+        CommentKind.block,
+      ]);
+    });
+
+    test('reports comments before the end of file', () {
+      expect(kinds('void f() {}\n// end'), <CommentKind>[CommentKind.line]);
+      expect(kinds('void f() {}\n/* end */\n'), <CommentKind>[
+        CommentKind.block,
+      ]);
+      expect(kinds('// only a comment\n'), <CommentKind>[CommentKind.line]);
+    });
+
+    test('reports every comment of a group in order', () {
+      expect(kinds('// a\n/* b */\n/// c\nvoid f() {}\n'), <CommentKind>[
+        CommentKind.line,
+        CommentKind.block,
+      ]);
+    });
+
+    test('ignores comment markers inside string literals', () {
+      expect(kinds("const a = 'http://x // y /* z */';\n"), isEmpty);
+      expect(kinds('const a = r"// raw /* x */";\n'), isEmpty);
+      expect(kinds("const a = '''\n// multi\n/* line */\n''';\n"), isEmpty);
+      expect(kinds('const a = r"""\n// raw multi\n""";\n'), isEmpty);
+      expect(
+        kinds(
+          r"const b = 1; const a = 'x ${b} // y';"
+          '\n',
+        ),
+        isEmpty,
+      );
+    });
+
+    test('reports comments inside string interpolation code', () {
+      expect(
+        kinds("const b = 1;\nconst a = 'x \${b /* c */}';\n"),
+        <CommentKind>[CommentKind.block],
+      );
+    });
+
+    test('does not fail on invalid code', () {
+      expect(kinds('void f( {\n// x\n'), <CommentKind>[CommentKind.line]);
+    });
+  });
+
+  group('scanFiles', () {
+    late Directory root;
+
+    setUp(() {
+      root = Directory.systemTemp.createTempSync('k_comments_');
+      File('${root.path}/lib/a.dart')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('// a\n');
+      File('${root.path}/lib/b.dart').writeAsStringSync('/// b\nvoid b() {}\n');
+      File('${root.path}/gen/c.dart')
+        ..createSync(recursive: true)
+        ..writeAsStringSync('// generated\n');
+      File('${root.path}/notes.txt').writeAsStringSync('// not dart\n');
+    });
+
+    tearDown(() => root.deleteSync(recursive: true));
+
+    test('checks included files and skips excluded ones', () {
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(
+          include: <String>['**.dart'],
+          exclude: <String>['gen/**'],
+        ),
+      );
+      expect(found.map((v) => v.toString()), <String>[
+        'lib/a.dart:1:1: line comment is not allowed, use /// only',
+      ]);
+    });
+
+    test('reports files in path order', () {
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(include: <String>['**.dart'], exclude: <String>[]),
+      );
+      expect(found.map((v) => v.path), <String>['gen/c.dart', 'lib/a.dart']);
+    });
+  });
+}
