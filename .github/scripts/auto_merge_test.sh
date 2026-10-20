@@ -9,15 +9,19 @@ trap 'rm -rf "$WORK"' EXIT
 
 mkdir -p "$WORK/bin"
 # The fake gh logs its arguments to $CALLS. "pr view" prints $AUTO (true or
-# false); VIEW_FAIL=1 makes it fail. "pr merge --disable-auto" fails with
-# $DISABLE_ERR when it is set.
+# false), or $AUTO_AFTER once a disable was attempted; VIEW_FAIL=1 makes it
+# fail. "pr merge --disable-auto" fails with $DISABLE_ERR when it is set.
 cat >"$WORK/bin/gh" <<'MOCK'
 #!/usr/bin/env bash
 echo "$*" >>"$CALLS"
 case "$*" in
   "pr view"*)
     [ "${VIEW_FAIL:-0}" = 1 ] && { echo "gh: HTTP 502" >&2; exit 1; }
-    echo "${AUTO:-false}" ;;
+    if grep -q -- --disable-auto "$CALLS"; then
+      echo "${AUTO_AFTER:-${AUTO:-false}}"
+    else
+      echo "${AUTO:-false}"
+    fi ;;
   *--disable-auto*)
     if [ -n "${DISABLE_ERR:-}" ]; then echo "$DISABLE_ERR" >&2; exit 1; fi ;;
 esac
@@ -69,9 +73,16 @@ run_case "empty base disables (fail closed)" 0 "$D" BASE= AUTO=true
 run_case "main-like base disables" 0 "$D" BASE=main2 AUTO=true
 run_case "non-main without auto-merge is a no-op" 0 "" ACTION=edited BASE=feat/x AUTO=false
 run_case "non-main labeled approved never enables" 0 "" ACTION=labeled LABEL=review:approved BASE=feat/x
-run_case "disable 'not enabled' race is tolerated" 0 "$D" BASE=feat/x AUTO=true \
-  DISABLE_ERR="GraphQL: Auto merge is not enabled for this pull request"
+run_case "disable error, then auto-merge off, succeeds" 0 "$D" BASE=feat/x \
+  AUTO=true AUTO_AFTER=false DISABLE_ERR="GraphQL: Auto merge is not enabled"
+run_case "'not enabled' error while still armed fails" 1 "$D" BASE=feat/x \
+  AUTO=true AUTO_AFTER=true DISABLE_ERR="GraphQL: Auto merge is not enabled"
 run_case "disable failure fails" 1 "$D" BASE=feat/x AUTO=true DISABLE_ERR="HTTP 502"
+run_case "unreadable state after a failed disable fails" 1 "$D" BASE=feat/x \
+  AUTO=true AUTO_AFTER=garbage DISABLE_ERR="HTTP 502"
+run_case "main labeled with no label name is a no-op" 0 "" ACTION=labeled LABEL=
+run_case "main unlabeled-like action is a no-op" 0 "" ACTION=synchronize
+run_case "non-main other label disables" 0 "$D" ACTION=labeled LABEL=ci BASE=feat/x AUTO=true
 run_case "unreadable auto-merge state fails" 1 "" BASE=feat/x VIEW_FAIL=1
 
 echo "$PASS passed, $FAILED failed"
