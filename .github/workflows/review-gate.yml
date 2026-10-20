@@ -36,8 +36,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Base branch commit, never the PR head.
-          ref: ${{ github.event.pull_request.base.sha }}
+          # Base branch tip, never the PR head. Under pull_request_target,
+          # github.sha is the tip of the base branch, so workflow and scripts come
+          # from the same commit. Under the temporary pull_request trigger,
+          # github.sha is the merge commit (it contains PR code), so the base
+          # branch is fetched by name instead (its current tip).
+          ref: ${{ github.event_name == 'pull_request_target' && github.sha || github.event.pull_request.base.ref }}
           persist-credentials: false
           sparse-checkout: .github/scripts
       - name: Check review labels

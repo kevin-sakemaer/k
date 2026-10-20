@@ -24,8 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Base branch commit, never the PR head.
-          ref: ${{ github.event.pull_request.base.sha }}
+          # github.sha is the tip of the base branch under pull_request_target,
+          # so workflow and scripts come from the same commit, never the PR head.
+          ref: ${{ github.sha }}
           persist-credentials: false
           sparse-checkout: .github/scripts
       - name: Check protected paths

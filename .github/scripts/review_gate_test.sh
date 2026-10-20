@@ -239,5 +239,16 @@ echo "2026-10-20T09:00:00Z" >"$MOCK/runs.out"
 run_gate
 check 0 "source: fallback" kept
 
+new_case "missing shared freshness helper fails closed" labeled review:approved
+echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+echo "AAAA 2026-10-20T09:00:00Z" >"$MOCK/activity.out"
+mkdir -p "$WORK/nohelper"
+cp "$SCRIPT" "$WORK/nohelper/review_gate.sh"
+SAVED_SCRIPT="$SCRIPT"
+SCRIPT="$WORK/nohelper/review_gate.sh"
+run_gate
+SCRIPT="$SAVED_SCRIPT"
+check 1 "freshness.sh" kept
+
 echo "$PASS passed, $FAILED failed"
 [ "$FAILED" = 0 ]
