@@ -8,9 +8,8 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
 - Public members are documented.
 - `k.yaml` at the repository root is the single source of configuration; nothing is hard-coded.
 - Every rule must live in a required CI check. Checks still to come, each tracked in its own issue and made required on `main` when done:
-  - `///`-only comments: #9 (runs in the `test` check; its k.yaml settings come with #13);
+  - `///`-only comments: #9 (runs in the `test` check; reading its settings from k.yaml is still to do);
   - dependency publishers: #4;
-  - `k.yaml` validation: #10;
   - no closing keywords in partial PRs (Pre-commit checklist point 7): #26.
 
 ## Pre-commit checklist
@@ -36,10 +35,10 @@ tool/install_hooks.sh
 - `pre-push` fetches `origin/main`, then for each pushed commit checks that it contains `origin/main` (point 1) and runs the full `tool/check.sh` in a clean temporary worktree of that commit (points 2 to 5).
 - Packages come from `dart pub workspace list --json`. Every package must have `test/**/*_test.dart`; the workspace root is skipped only when it has no `lib/`.
 - `k.yaml` is mandatory: without it, `tool/check.sh` fails first with `k.yaml is required`. There is no default value outside `k.yaml`.
-- `tool/check.sh` never parses `k.yaml`: it validates it with `k_config`, then reads each value through `dart run packages/k_config/bin/k_config.dart --get <key>` (`coverage.default`, `coverage.tool_version`). An invalid `k.yaml` fails the check. Coverage is never disabled.
+- `tool/check.sh` never parses `k.yaml`: it validates it with `k_config` (required: a missing `packages/k_config/bin/k_config.dart` fails the job), then reads each value through `dart run k_config --get <key>` (`coverage.default`, `coverage.tool_version`). An invalid `k.yaml` fails the check. Coverage is never disabled.
 - Coverage counts every `lib/**/*.dart` file: a file that no test loads counts as 0%.
-- The comments check (#9) runs `dart run k_comments --root . --include '**.dart' --exclude '.dart_tool/**' --exclude '**/.dart_tool/**'` (package `packages/k_comments`, #20) and fails on any violation. `packages/k_comments/bin/k_comments.dart` is on `main`, so a missing checker always fails the job. Its globs and exceptions move to k.yaml with #13. A workspace package executable `packages/<name>/bin/<name>.dart` is run by package name, any other script by path.
-- Checks whose script is not on `main` yet (k_config #13 at `packages/k_config/bin/k_config.dart`, publishers #4 at `packages/k_publishers/bin/k_publishers.dart`; #4 may change that location) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
+- The comments check (#9) runs `dart run k_comments --root . --include '**.dart' --exclude '.dart_tool/**' --exclude '**/.dart_tool/**'` (package `packages/k_comments`, #20) and fails on any violation. `packages/k_comments/bin/k_comments.dart` is on `main`, so a missing checker always fails the job. Its globs and exceptions are still to be read from k.yaml (#9). A workspace package executable `packages/<name>/bin/<name>.dart` is run by package name, any other script by path.
+- Checks whose script is not on `main` yet (publishers #4 at `packages/k_publishers/bin/k_publishers.dart`; #4 may change that location) are skipped with a `SKIP:` message and a CI warning while their issue is open; once the issue is closed, the missing script fails the check.
 - Points 6 to 8 stay manual.
 
 ## Workflow
@@ -76,7 +75,7 @@ tool/install_hooks.sh
 - Any exception must be approved through **Grok Bot**.
 
 ## k.yaml
-`k.yaml` at the repository root holds every quality setting. It is validated by `packages/k_config` (`dart run packages/k_config/bin/k_config.dart`) in the `k-config` workflow. `k-config` is **not yet a required check** on `main`: k.dart Lead adds it to the ruleset once #10 is merged. On success the job summary lists every active override and exception with its reason.
+`k.yaml` at the repository root holds every quality setting. It is validated by `packages/k_config` (`dart run packages/k_config/bin/k_config.dart`) by `tool/check.sh`, so it runs in the required `test` check. The separate `k-config` workflow runs the same validation and writes the job summary; it is not a required check. On success the job summary lists every active override and exception with its reason.
 
 ```yaml
 coverage:
@@ -106,4 +105,4 @@ Validation fails on an unknown or missing key at any level, a duplicated key, a 
 ### Adding an exception
 1. Get Kevin's approval first: **every exception requires Kevin's agreement** (through Grok Bot).
 2. Add the entry under the right section with a non-blank `reason`; dependency exceptions also need `approved_by` naming Kevin and the date.
-3. Open a PR; the `k-config` job must be green and its summary shows the new exception.
+3. Open a PR; the `test` check must be green and the `k-config` job summary shows the new exception.
