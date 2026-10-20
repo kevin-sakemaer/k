@@ -1,0 +1,33 @@
+name: auto-merge
+
+# Enables squash auto-merge on every PR. pull_request_target runs in the
+# context of the base branch; the PR head is never checked out.
+# The `labeled` trigger (review:approved only) re-enables auto-merge on PRs
+# opened before this workflow or where auto-merge was disabled. Running
+# `gh pr merge --auto` again is harmless.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, labeled]
+
+permissions: {}
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  auto-merge:
+    if: ${{ !github.event.pull_request.draft && (github.event.action != 'labeled' || github.event.label.name == 'review:approved') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Enable auto-merge (squash)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr merge "$PR" --auto --squash
