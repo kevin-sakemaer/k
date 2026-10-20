@@ -1,0 +1,32 @@
+name: test
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detect Dart project
+        id: detect
+        run: |
+          if [ -f pubspec.yaml ] && [ -d test ] && [ -n "$(find test -name '*_test.dart' -print -quit)" ]; then
+            echo "dart=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dart=false" >> "$GITHUB_OUTPUT"
+            echo "No pubspec.yaml or tests: nothing to check."
+          fi
+      - uses: dart-lang/setup-dart@v1
+        if: steps.detect.outputs.dart == 'true'
+      - if: steps.detect.outputs.dart == 'true'
+        run: dart pub get
+      - if: steps.detect.outputs.dart == 'true'
+        run: dart format --output=none --set-exit-if-changed .
+      - if: steps.detect.outputs.dart == 'true'
+        run: dart analyze --fatal-infos
+      - if: steps.detect.outputs.dart == 'true'
+        run: dart test
