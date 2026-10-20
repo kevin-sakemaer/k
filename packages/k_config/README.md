@@ -19,8 +19,9 @@ request; the `k-config` workflow (not required) also runs it and writes the
 job summary.
 
 `dart run packages/k_config/bin/k_config.dart --get <key> [repository-root]`
-prints only the validated value of `<key>` (`coverage.default` or
-`coverage.tool_version`) and exits with code 1 when `k.yaml` is invalid, or 64
+prints only the validated value of `<key>`: `coverage.default`,
+`coverage.tool_version`, or `coverage.thresholds` (one `<package>\t<threshold>`
+line per workspace package, its override or `coverage.default`) and exits with code 1 when `k.yaml` is invalid, or 64
 for an unsupported key. Scripts use it instead of parsing `k.yaml`.
 
 Other checks read the typed values with `loadKConfig(Directory root)`.
