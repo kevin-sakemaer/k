@@ -1,6 +1,15 @@
 # Global quality configuration of this repository.
-# Only coverage.default is read for now (by tool/check.sh); the full schema
-# and its validation (packages/k_config) land with #13.
+# It is validated by packages/k_config in the required `k-config` check:
+# an unknown key, a wrong type, a missing reason or an unknown package
+# fails CI. See packages/k_config/README.md for the schema.
 coverage:
   default: 100
   overrides: {}
+dependencies:
+  allowed_publishers:
+    - dart.dev
+    - tools.dart.dev
+    - labs.dart.dev
+  exceptions: {}
+comments:
+  exceptions: []
