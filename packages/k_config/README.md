@@ -14,7 +14,7 @@ dart run packages/k_config/bin/k_config.dart [repository-root]
 The command exits with code 1 and prints one line per error when `k.yaml` is
 invalid. When it is valid, it prints a Markdown summary of every active
 override and exception, and appends it to `$GITHUB_STEP_SUMMARY` when that
-variable is set. The required `k-config` CI check runs it on every pull
+variable is set. The `k-config` CI check (not yet required on `main`) runs it on every pull
 request.
 
 Other checks read the typed values with `loadKConfig(Directory root)`.
@@ -29,18 +29,19 @@ coverage:
       threshold: 95         # 0 to 100.
       reason: "Why this package cannot reach the default."
 dependencies:
-  allowed_publishers:       # Non-empty list, no duplicates.
-    - dart.dev
-    - tools.dart.dev
-    - labs.dart.dev
   exceptions:               # Required, may be {}.
     some_pkg:               # Must be a direct dependency of the workspace.
-      reason: "Approved by Kevin on YYYY-MM-DD via Grok Bot."
+      reason: "Why this dependency is needed."
+      approved_by: "Kevin, YYYY-MM-DD, via Grok Bot."
 comments:
   exceptions:               # Required, may be [].
     - path: packages/foo/lib/vendored.dart   # Existing file, relative path.
       reason: "Why this file needs non-documentation comments."
 ```
+
+Direct dependencies published by `dart.dev`, `tools.dart.dev` or
+`labs.dart.dev` are always allowed; this list is fixed in the code and an
+`allowed_publishers` key fails as an unknown key.
 
 Validation fails on:
 
@@ -49,7 +50,9 @@ Validation fails on:
 - a value of the wrong type;
 - a threshold outside 0 to 100;
 - a missing or blank `reason`;
-- a coverage override for a package that is not in the workspace;
+- a coverage override for a package that is not in the workspace, or whose
+  threshold is not strictly lower than `coverage.default`;
+- a missing or blank `approved_by` on a dependency exception;
 - a dependency exception for a package that is not a direct dependency;
 - a comment exception for a missing file, or a duplicated path.
 

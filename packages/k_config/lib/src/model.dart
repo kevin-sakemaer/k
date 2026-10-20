@@ -4,7 +4,7 @@ library;
 /// The validated content of the global `k.yaml` configuration file.
 final class KConfig {
   /// Creates a configuration from its validated sections.
-  const KConfig({
+  const new({
     required this.coverage,
     required this.dependencies,
     required this.comments,
@@ -23,10 +23,7 @@ final class KConfig {
 /// Settings of the coverage check.
 final class CoverageConfig {
   /// Creates coverage settings.
-  const CoverageConfig({
-    required this.defaultThreshold,
-    required this.overrides,
-  });
+  const new({required this.defaultThreshold, required this.overrides});
 
   /// Line coverage threshold, in percent, of every package without override.
   final num defaultThreshold;
@@ -43,7 +40,7 @@ final class CoverageConfig {
 /// A justified coverage threshold for one workspace package.
 final class CoverageOverride {
   /// Creates an override with its [threshold] and [reason].
-  const CoverageOverride({required this.threshold, required this.reason});
+  const new({required this.threshold, required this.reason});
 
   /// Line coverage threshold, in percent.
   final num threshold;
@@ -55,13 +52,17 @@ final class CoverageOverride {
 /// Settings of the direct dependency publisher check.
 final class DependenciesConfig {
   /// Creates dependency settings.
-  const DependenciesConfig({
-    required this.allowedPublishers,
-    required this.exceptions,
-  });
+  const new({required this.exceptions});
 
   /// Verified pub.dev publishers whose packages may be direct dependencies.
-  final List<String> allowedPublishers;
+  ///
+  /// The list is fixed and cannot be changed from `k.yaml`: any other
+  /// dependency needs an entry in [exceptions].
+  static const List<String> allowedPublishers = [
+    'dart.dev',
+    'tools.dart.dev',
+    'labs.dart.dev',
+  ];
 
   /// Approved direct dependencies from other publishers, keyed by package
   /// name.
@@ -70,17 +71,20 @@ final class DependenciesConfig {
 
 /// An approved direct dependency from a publisher that is not allowed.
 final class DependencyException {
-  /// Creates an exception with its [reason].
-  const DependencyException({required this.reason});
+  /// Creates an exception with its [reason] and [approvedBy].
+  const new({required this.reason, required this.approvedBy});
 
-  /// Why, and by whom, the dependency was approved.
+  /// Why the dependency is needed.
   final String reason;
+
+  /// Who approved the dependency, and when.
+  final String approvedBy;
 }
 
 /// Settings of the Dart comment check.
 final class CommentsConfig {
   /// Creates comment settings.
-  const CommentsConfig({required this.exceptions});
+  const new({required this.exceptions});
 
   /// Files that may contain non-documentation comments.
   final List<CommentException> exceptions;
@@ -89,7 +93,7 @@ final class CommentsConfig {
 /// A file that may contain non-documentation comments.
 final class CommentException {
   /// Creates an exception for [path] with its [reason].
-  const CommentException({required this.path, required this.reason});
+  const new({required this.path, required this.reason});
 
   /// Path of the file, relative to the repository root.
   final String path;

@@ -14,10 +14,10 @@ coverage:
       threshold: 95
       reason: "Generated bindings cannot be exercised."
 dependencies:
-  allowed_publishers: [dart.dev, tools.dart.dev, labs.dart.dev]
   exceptions:
     third_party:
-      reason: "Approved by Kevin on 2026-10-20 via Grok Bot."
+      reason: "Needed for the generated bindings."
+      approved_by: "Kevin, 2026-10-20, via Grok Bot."
 comments:
   exceptions:
     - path: packages/alpha/lib/legacy.dart
@@ -32,9 +32,9 @@ comments:
 /// are written last, keyed by relative path, and replace the default files.
 /// The directory is deleted when the current test ends.
 Directory createRepository({Map<String, String> files = const {}}) {
-  final root = Directory.systemTemp.createTempSync('k_config_test_');
+  final Directory root = Directory.systemTemp.createTempSync('k_config_test_');
   addTearDown(() => root.deleteSync(recursive: true));
-  final defaults = {
+  final Map<String, String> defaults = {
     'pubspec.yaml': '''
 name: workspace_root
 publish_to: none

@@ -3,8 +3,8 @@ library;
 
 import 'dart:io';
 
-import 'loader.dart';
-import 'summary.dart';
+import 'package:k_config/src/loader.dart';
+import 'package:k_config/src/summary.dart';
 
 /// Validates `k.yaml` and returns the process exit code.
 ///
@@ -24,9 +24,9 @@ int runCli(
   }
   final root = Directory(arguments.isEmpty ? '.' : arguments.single);
   try {
-    final summary = renderSummary(loadKConfig(root));
+    final String summary = renderSummary(loadKConfig(root));
     out.write(summary);
-    final summaryPath = environment['GITHUB_STEP_SUMMARY'];
+    final String? summaryPath = environment['GITHUB_STEP_SUMMARY'];
     if (summaryPath != null && summaryPath.isNotEmpty) {
       File(summaryPath).writeAsStringSync(summary, mode: FileMode.append);
     }

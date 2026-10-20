@@ -20,7 +20,7 @@ void main() {
     });
 
     test('includes the dependencies of the root pubspec', () {
-      final root = createRepository(
+      final Directory root = createRepository(
         files: {
           'pubspec.yaml': '''
 name: workspace_root
@@ -71,7 +71,7 @@ dev_dependencies:
     for (final MapEntry(key: description, value: (files, message))
         in failures.entries) {
       test('fails on $description', () {
-        final root = createRepository(files: files);
+        final Directory root = createRepository(files: files);
 
         expect(
           () => Workspace.load(root),
@@ -87,7 +87,7 @@ dev_dependencies:
     }
 
     test('fails when the root pubspec does not exist', () {
-      final root = createRepository();
+      final Directory root = createRepository();
       root.listSync().whereType<File>().forEach((file) => file.deleteSync());
 
       expect(

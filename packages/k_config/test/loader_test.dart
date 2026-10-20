@@ -8,13 +8,13 @@ import 'support/fixture.dart';
 void main() {
   group('loadKConfig', () {
     test('returns the validated configuration', () {
-      final config = loadKConfig(createRepository());
+      final KConfig config = loadKConfig(createRepository());
 
       expect(config.coverage.thresholdFor('alpha'), 95);
     });
 
     test('fails when k.yaml is missing', () {
-      final root = createRepository();
+      final Directory root = createRepository();
       File('${root.path}/k.yaml').deleteSync();
 
       expect(
@@ -30,7 +30,9 @@ void main() {
     });
 
     test('fails when the workspace cannot be read', () {
-      final root = createRepository(files: {'pubspec.yaml': 'name: r\n'});
+      final Directory root = createRepository(
+        files: {'pubspec.yaml': 'name: r\n'},
+      );
 
       expect(
         () => loadKConfig(root),
@@ -45,7 +47,7 @@ void main() {
     });
 
     test('fails with every validation error', () {
-      final root = createRepository(
+      final Directory root = createRepository(
         files: {'k.yaml': validConfig.replaceFirst('100', '"high"')},
       );
 

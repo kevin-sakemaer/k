@@ -8,7 +8,7 @@ import 'package:yaml/yaml.dart';
 /// Thrown when the workspace pubspecs are missing or malformed.
 final class WorkspaceException implements Exception {
   /// Creates an exception with a human readable [message].
-  const WorkspaceException(this.message);
+  const new(this.message);
 
   /// Human readable description of the problem.
   final String message;
@@ -20,7 +20,7 @@ final class WorkspaceException implements Exception {
 /// Packages and direct dependencies of a pub workspace.
 final class Workspace {
   /// Creates a workspace description.
-  const Workspace({
+  const new({
     required this.root,
     required this.packages,
     required this.directDependencies,
@@ -29,9 +29,9 @@ final class Workspace {
   /// Reads the workspace whose root `pubspec.yaml` is in [root].
   ///
   /// Throws a [WorkspaceException] when a pubspec is missing or malformed.
-  factory Workspace.load(Directory root) {
-    final rootPubspec = _readPubspec(root, 'pubspec.yaml');
-    final members = rootPubspec['workspace'];
+  factory load(Directory root) {
+    final YamlMap rootPubspec = _readPubspec(root, 'pubspec.yaml');
+    final Object? members = rootPubspec['workspace'];
     if (members is! YamlList) {
       throw const WorkspaceException(
         'pubspec.yaml: "workspace" must be a list of package paths.',
@@ -39,15 +39,15 @@ final class Workspace {
     }
     final packages = <String>{};
     final dependencies = <String>{..._dependencyNames(rootPubspec, '')};
-    for (final member in members) {
+    for (final Object? member in members) {
       if (member is! String) {
         throw WorkspaceException(
           'pubspec.yaml: workspace entry "$member" must be a path.',
         );
       }
       final pubspecPath = '$member/pubspec.yaml';
-      final pubspec = _readPubspec(root, pubspecPath);
-      final name = pubspec['name'];
+      final YamlMap pubspec = _readPubspec(root, pubspecPath);
+      final Object? name = pubspec['name'];
       if (name is! String) {
         throw WorkspaceException('$pubspecPath: "name" must be a string.');
       }
@@ -97,7 +97,7 @@ YamlMap _readPubspec(Directory root, String relativePath) {
 Iterable<String> _dependencyNames(YamlMap pubspec, String location) sync* {
   final label = location.isEmpty ? 'pubspec.yaml' : location;
   for (final section in const ['dependencies', 'dev_dependencies']) {
-    final value = pubspec[section];
+    final Object? value = pubspec[section];
     if (value == null) {
       continue;
     }

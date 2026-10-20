@@ -1,7 +1,7 @@
 /// Markdown summary of the active settings of `k.yaml`.
 library;
 
-import 'model.dart';
+import 'package:k_config/src/model.dart';
 
 /// Renders [config] as a Markdown summary that lists every active override
 /// and exception with its reason, for the CI job summary.
@@ -32,17 +32,17 @@ String renderSummary(KConfig config) {
     ..writeln()
     ..writeln(
       'Allowed publishers: '
-      '${config.dependencies.allowedPublishers.join(', ')}.',
+      '${DependenciesConfig.allowedPublishers.join(', ')}.',
     )
     ..writeln();
   _table(
     buffer,
     empty: 'No dependency exceptions.',
-    header: ['Package', 'Reason'],
+    header: ['Package', 'Reason', 'Approved by'],
     rows: [
       for (final MapEntry(:key, :value)
           in config.dependencies.exceptions.entries)
-        [key, value.reason],
+        [key, value.reason, value.approvedBy],
     ],
   );
   buffer
