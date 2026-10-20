@@ -73,3 +73,35 @@ tool/install_hooks.sh
 ## Dependencies
 - **Direct** dependencies are allowed only if their verified publisher on pub.dev is `dart.dev`, `tools.dart.dev` or `labs.dart.dev`.
 - Any exception must be approved through **Grok Bot**.
+
+## k.yaml
+`k.yaml` at the repository root holds every quality setting. It is validated by `packages/k_config` (`dart run packages/k_config/bin/k_config.dart`) in the `k-config` workflow. `k-config` is **not yet a required check** on `main`: k.dart Lead adds it to the ruleset once #10 is merged. On success the job summary lists every active override and exception with its reason.
+
+```yaml
+coverage:
+  default: 100              # Line coverage threshold in percent, 0 to 100.
+  overrides:                # Required, may be {}.
+    some_package:           # Must be a workspace package.
+      threshold: 95         # Strictly lower than coverage.default.
+      reason: "Why this package cannot reach the default."
+dependencies:
+  exceptions:               # Required, may be {}.
+    some_pkg:               # Must be a direct dependency of the workspace.
+      reason: "Why this dependency is needed."
+      approved_by: "Kevin, YYYY-MM-DD, via Grok Bot."
+comments:
+  exceptions:               # Required, may be [].
+    - path: packages/foo/lib/vendored.dart   # Existing file, relative path.
+      reason: "Why this file needs non-documentation comments."
+```
+
+- `coverage`: `default` applies to every package; an override lowers it for one package and must be strictly lower than `default`.
+- `dependencies`: the publishers `dart.dev`, `tools.dart.dev` and `labs.dart.dev` are fixed in `k_config` and cannot be changed from `k.yaml` (an `allowed_publishers` key fails as an unknown key). Any other direct dependency needs an entry in `exceptions`.
+- `comments`: files allowed to contain non-documentation comments.
+
+Validation fails on an unknown or missing key at any level, a duplicated key, a wrong type, a threshold outside 0 to 100, a coverage override not strictly lower than `coverage.default` or for a package outside the workspace, a missing or blank `reason` (or `approved_by`), a dependency exception for a package that is not a direct dependency, and a comment exception for a missing or duplicated file.
+
+### Adding an exception
+1. Get Kevin's approval first: **every exception requires Kevin's agreement** (through Grok Bot).
+2. Add the entry under the right section with a non-blank `reason`; dependency exceptions also need `approved_by` naming Kevin and the date.
+3. Open a PR; the `k-config` job must be green and its summary shows the new exception.

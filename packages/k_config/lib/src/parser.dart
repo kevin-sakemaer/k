@@ -1,20 +1,19 @@
 /// Strict validation of the `k.yaml` source.
 library;
 
+import 'package:k_config/src/model.dart';
+import 'package:k_config/src/workspace.dart';
 import 'package:yaml/yaml.dart';
-
-import 'model.dart';
-import 'workspace.dart';
 
 /// Outcome of [parseKConfig].
 sealed class KConfigResult {
-  const KConfigResult();
+  const new();
 }
 
 /// A `k.yaml` source that passed every validation rule.
 final class KConfigValid extends KConfigResult {
   /// Wraps the validated [config].
-  const KConfigValid(this.config);
+  const new(this.config);
 
   /// The typed configuration.
   final KConfig config;
@@ -23,7 +22,7 @@ final class KConfigValid extends KConfigResult {
 /// A `k.yaml` source that broke at least one validation rule.
 final class KConfigInvalid extends KConfigResult {
   /// Wraps the non-empty list of [errors].
-  const KConfigInvalid(this.errors);
+  const new(this.errors);
 
   /// One human readable message per broken rule.
   final List<String> errors;
@@ -45,7 +44,7 @@ KConfigResult parseKConfig(String source, Workspace workspace) {
     return KConfigInvalid(['k.yaml: invalid YAML: $error']);
   }
   final validator = _Validator(workspace);
-  final config = validator.config(document);
+  final KConfig? config = validator.config(document);
   if (config == null || validator.errors.isNotEmpty) {
     return KConfigInvalid(List.unmodifiable(validator.errors));
   }
@@ -60,7 +59,7 @@ typedef _Parse<T> = T? Function(Object? value, String path);
 typedef _ParseEntry<T> = T? Function(String name, Object? value, String path);
 
 final class _Validator {
-  _Validator(this.workspace);
+  new(this.workspace);
 
   final Workspace workspace;
 
@@ -72,7 +71,7 @@ final class _Validator {
 
   KConfig? config(Object? document) {
     const path = '';
-    final map = strictMap(document, path, const {
+    final Map<String, Object?>? map = strictMap(document, path, const {
       'coverage',
       'dependencies',
       'comments',
@@ -80,9 +79,24 @@ final class _Validator {
     if (map == null) {
       return null;
     }
-    final coverageConfig = field(map, path, 'coverage', coverage);
-    final dependenciesConfig = field(map, path, 'dependencies', dependencies);
-    final commentsConfig = field(map, path, 'comments', comments);
+    final CoverageConfig? coverageConfig = field(
+      map,
+      path,
+      'coverage',
+      coverage,
+    );
+    final DependenciesConfig? dependenciesConfig = field(
+      map,
+      path,
+      'dependencies',
+      dependencies,
+    );
+    final CommentsConfig? commentsConfig = field(
+      map,
+      path,
+      'comments',
+      comments,
+    );
     if (coverageConfig == null ||
         dependenciesConfig == null ||
         commentsConfig == null) {
@@ -96,12 +110,15 @@ final class _Validator {
   }
 
   CoverageConfig? coverage(Object? value, String path) {
-    final map = strictMap(value, path, const {'default', 'overrides'});
+    final Map<String, Object?>? map = strictMap(value, path, const {
+      'default',
+      'overrides',
+    });
     if (map == null) {
       return null;
     }
-    final defaultThreshold = field(map, path, 'default', threshold);
-    final overrides = field(
+    final num? defaultThreshold = field(map, path, 'default', threshold);
+    final Map<String, CoverageOverride>? overrides = field(
       map,
       path,
       'overrides',
@@ -109,6 +126,15 @@ final class _Validator {
     );
     if (defaultThreshold == null || overrides == null) {
       return null;
+    }
+    for (final MapEntry(:key, :value) in overrides.entries) {
+      if (value.threshold >= defaultThreshold) {
+        error(
+          '$path.overrides.$key.threshold',
+          'must be lower than coverage.default ($defaultThreshold), '
+              'found ${value.threshold}.',
+        );
+      }
     }
     return CoverageConfig(
       defaultThreshold: defaultThreshold,
@@ -124,12 +150,15 @@ final class _Validator {
         '${_list(workspace.packages)}.',
       );
     }
-    final map = strictMap(value, path, const {'threshold', 'reason'});
+    final Map<String, Object?>? map = strictMap(value, path, const {
+      'threshold',
+      'reason',
+    });
     if (map == null) {
       return null;
     }
-    final packageThreshold = field(map, path, 'threshold', threshold);
-    final packageReason = field(map, path, 'reason', reason);
+    final num? packageThreshold = field(map, path, 'threshold', threshold);
+    final String? packageReason = field(map, path, 'reason', reason);
     if (packageThreshold == null || packageReason == null) {
       return null;
     }
@@ -137,53 +166,22 @@ final class _Validator {
   }
 
   DependenciesConfig? dependencies(Object? value, String path) {
-    final map = strictMap(value, path, const {
-      'allowed_publishers',
+    final Map<String, Object?>? map = strictMap(value, path, const {
       'exceptions',
     });
     if (map == null) {
       return null;
     }
-    final publishers = field(map, path, 'allowed_publishers', publisherList);
-    final exceptions = field(
+    final Map<String, DependencyException>? exceptions = field(
       map,
       path,
       'exceptions',
       (value, path) => entries(value, path, dependencyException),
     );
-    if (publishers == null || exceptions == null) {
+    if (exceptions == null) {
       return null;
     }
-    return DependenciesConfig(
-      allowedPublishers: publishers,
-      exceptions: exceptions,
-    );
-  }
-
-  List<String>? publisherList(Object? value, String path) {
-    if (value is! List) {
-      error(path, 'must be a list of publisher domains.');
-      return null;
-    }
-    if (value.isEmpty) {
-      error(path, 'must name at least one publisher.');
-      return null;
-    }
-    final publishers = <String>[];
-    var valid = true;
-    for (final (index, item) in value.indexed) {
-      final itemPath = '$path[$index]';
-      if (item is! String || item.trim().isEmpty) {
-        valid = false;
-        error(itemPath, 'must be a non-empty string.');
-      } else if (publishers.contains(item)) {
-        valid = false;
-        error(itemPath, 'duplicated publisher "$item".');
-      } else {
-        publishers.add(item);
-      }
-    }
-    return valid ? List.unmodifiable(publishers) : null;
+    return DependenciesConfig(exceptions: exceptions);
   }
 
   DependencyException? dependencyException(
@@ -194,23 +192,34 @@ final class _Validator {
     if (!workspace.directDependencies.contains(name)) {
       error(path, 'not a direct dependency of any workspace package.');
     }
-    final map = strictMap(value, path, const {'reason'});
+    final Map<String, Object?>? map = strictMap(value, path, const {
+      'reason',
+      'approved_by',
+    });
     if (map == null) {
       return null;
     }
-    final dependencyReason = field(map, path, 'reason', reason);
-    if (dependencyReason == null) {
+    final String? dependencyReason = field(map, path, 'reason', reason);
+    final String? approver = field(map, path, 'approved_by', approvedBy);
+    if (dependencyReason == null || approver == null) {
       return null;
     }
-    return DependencyException(reason: dependencyReason);
+    return DependencyException(reason: dependencyReason, approvedBy: approver);
   }
 
   CommentsConfig? comments(Object? value, String path) {
-    final map = strictMap(value, path, const {'exceptions'});
+    final Map<String, Object?>? map = strictMap(value, path, const {
+      'exceptions',
+    });
     if (map == null) {
       return null;
     }
-    final exceptions = field(map, path, 'exceptions', commentExceptions);
+    final List<CommentException>? exceptions = field(
+      map,
+      path,
+      'exceptions',
+      commentExceptions,
+    );
     if (exceptions == null) {
       return null;
     }
@@ -226,7 +235,7 @@ final class _Validator {
     var valid = true;
     for (final (index, item) in value.indexed) {
       final itemPath = '$path[$index]';
-      final exception = commentException(item, itemPath);
+      final CommentException? exception = commentException(item, itemPath);
       if (exception == null) {
         valid = false;
       } else if (exceptions.any((known) => known.path == exception.path)) {
@@ -240,12 +249,15 @@ final class _Validator {
   }
 
   CommentException? commentException(Object? value, String path) {
-    final map = strictMap(value, path, const {'path', 'reason'});
+    final Map<String, Object?>? map = strictMap(value, path, const {
+      'path',
+      'reason',
+    });
     if (map == null) {
       return null;
     }
-    final filePath = field(map, path, 'path', repositoryFile);
-    final fileReason = field(map, path, 'reason', reason);
+    final String? filePath = field(map, path, 'path', repositoryFile);
+    final String? fileReason = field(map, path, 'reason', reason);
     if (filePath == null || fileReason == null) {
       return null;
     }
@@ -288,15 +300,23 @@ final class _Validator {
     return value;
   }
 
+  String? approvedBy(Object? value, String path) {
+    if (value is! String || value.trim().isEmpty) {
+      error(path, 'must be a non-empty string that names the approver.');
+      return null;
+    }
+    return value;
+  }
+
   Map<String, T>? entries<T>(Object? value, String path, _ParseEntry<T> parse) {
-    final map = stringMap(value, path);
+    final Map<String, Object?>? map = stringMap(value, path);
     if (map == null) {
       return null;
     }
     final result = <String, T>{};
     var valid = true;
     for (final MapEntry(:key, :value) in map.entries) {
-      final entry = parse(key, value, _join(path, key));
+      final T? entry = parse(key, value, _join(path, key));
       if (entry == null) {
         valid = false;
       } else {
@@ -311,11 +331,11 @@ final class _Validator {
     String path,
     Set<String> keys,
   ) {
-    final map = stringMap(value, path);
+    final Map<String, Object?>? map = stringMap(value, path);
     if (map == null) {
       return null;
     }
-    for (final key in map.keys) {
+    for (final String key in map.keys) {
       if (!keys.contains(key)) {
         error(_join(path, key), 'unknown key. Allowed keys: ${_list(keys)}.');
       }
@@ -357,6 +377,6 @@ final class _Validator {
 String _join(String path, String key) => path.isEmpty ? key : '$path.$key';
 
 String _list(Iterable<String> values) {
-  final sorted = values.toList()..sort();
+  final List<String> sorted = values.toList()..sort();
   return sorted.isEmpty ? '(none)' : sorted.join(', ');
 }

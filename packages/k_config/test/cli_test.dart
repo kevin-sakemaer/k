@@ -16,11 +16,11 @@ void main() {
     });
 
     test('prints the summary and appends it to the job summary', () {
-      final root = createRepository();
+      final Directory root = createRepository();
       final jobSummary = File('${root.path}/summary.md')
         ..writeAsStringSync('previous\n');
 
-      final code = runCli(
+      final int code = runCli(
         [root.path],
         out: out,
         err: err,
@@ -34,7 +34,7 @@ void main() {
     });
 
     test('ignores an empty job summary path', () {
-      final code = runCli(
+      final int code = runCli(
         [createRepository().path],
         out: out,
         err: err,
@@ -46,7 +46,7 @@ void main() {
     });
 
     test('defaults to the current directory', () {
-      final previous = Directory.current;
+      final Directory previous = Directory.current;
       addTearDown(() => Directory.current = previous);
       Directory.current = createRepository();
 
@@ -54,7 +54,7 @@ void main() {
     });
 
     test('prints every error and fails on an invalid configuration', () {
-      final root = createRepository(
+      final Directory root = createRepository(
         files: {
           'k.yaml': validConfig
               .replaceFirst('default: 100', 'default: 101')
@@ -62,7 +62,7 @@ void main() {
         },
       );
 
-      final code = runCli([root.path], out: out, err: err);
+      final int code = runCli([root.path], out: out, err: err);
 
       expect(code, 1);
       expect(out.toString(), isEmpty);

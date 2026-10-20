@@ -3,14 +3,14 @@ library;
 
 import 'dart:io';
 
-import 'model.dart';
-import 'parser.dart';
-import 'workspace.dart';
+import 'package:k_config/src/model.dart';
+import 'package:k_config/src/parser.dart';
+import 'package:k_config/src/workspace.dart';
 
 /// Thrown by [loadKConfig] when `k.yaml` or the workspace is invalid.
 final class KConfigException implements Exception {
   /// Creates an exception with one message per broken rule.
-  const KConfigException(this.errors);
+  const new(this.errors);
 
   /// One human readable message per broken rule.
   final List<String> errors;
@@ -35,7 +35,9 @@ KConfig loadKConfig(Directory root) {
     throw KConfigException([error.message]);
   }
   return switch (parseKConfig(file.readAsStringSync(), workspace)) {
-    KConfigValid(:final config) => config,
-    KConfigInvalid(:final errors) => throw KConfigException(errors),
+    KConfigValid(:final KConfig config) => config,
+    KConfigInvalid(:final List<String> errors) => throw KConfigException(
+      errors,
+    ),
   };
 }

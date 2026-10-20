@@ -15,8 +15,12 @@ void main() {
           },
         ),
         dependencies: DependenciesConfig(
-          allowedPublishers: ['dart.dev', 'tools.dart.dev'],
-          exceptions: {'third_party': DependencyException(reason: 'Approved.')},
+          exceptions: {
+            'third_party': DependencyException(
+              reason: 'Needed.',
+              approvedBy: 'Kevin.',
+            ),
+          },
         ),
         comments: CommentsConfig(
           exceptions: [
@@ -25,7 +29,7 @@ void main() {
         ),
       );
 
-      expect(renderSummary(config), '''
+      expect(renderSummary(config), r'''
 ## k.yaml
 
 The configuration is valid.
@@ -36,15 +40,15 @@ Default line coverage threshold: 100%.
 
 | Package | Threshold | Reason |
 | --- | --- | --- |
-| alpha | 95.5% | Pipes \\| and new lines are escaped. |
+| alpha | 95.5% | Pipes \| and new lines are escaped. |
 
 ### Dependencies
 
-Allowed publishers: dart.dev, tools.dart.dev.
+Allowed publishers: dart.dev, tools.dart.dev, labs.dart.dev.
 
-| Package | Reason |
-| --- | --- |
-| third_party | Approved. |
+| Package | Reason | Approved by |
+| --- | --- | --- |
+| third_party | Needed. | Kevin. |
 
 ### Comments
 
@@ -58,14 +62,11 @@ Allowed publishers: dart.dev, tools.dart.dev.
     test('says when nothing is overridden', () {
       const config = KConfig(
         coverage: CoverageConfig(defaultThreshold: 100, overrides: {}),
-        dependencies: DependenciesConfig(
-          allowedPublishers: ['dart.dev'],
-          exceptions: {},
-        ),
+        dependencies: DependenciesConfig(exceptions: {}),
         comments: CommentsConfig(exceptions: []),
       );
 
-      final summary = renderSummary(config);
+      final String summary = renderSummary(config);
 
       expect(summary, contains('No coverage overrides.\n'));
       expect(summary, contains('No dependency exceptions.\n'));
