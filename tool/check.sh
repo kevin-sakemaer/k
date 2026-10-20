@@ -263,6 +263,5 @@ for i in "${!packages[@]}"; do
     || fail "coverage of $pkg is ${pct}%, below the threshold ${threshold}%"
 done
 
-
 echo
 echo "All checks passed."
