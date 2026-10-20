@@ -6,12 +6,12 @@ on:
 
 permissions: {}
 
-# Each synchronize run gets its own group (github.run_id), so no later event can
+# Each synchronize or reopened run gets its own group (github.run_id), so no later event can
 # cancel or replace it while it is pending: the push always removes review:approved.
 # Label runs share one group per PR. A pending run in a group can still be replaced
 # by a newer one, so the freshness check below does not rely on this setting.
 concurrency:
-  group: review-gate-${{ github.event.pull_request.number }}-${{ github.event.action == 'synchronize' && github.run_id || 'label' }}
+  group: review-gate-${{ github.event.pull_request.number }}-${{ (github.event.action == 'synchronize' || github.event.action == 'reopened') && github.run_id || 'label' }}
   cancel-in-progress: false
 
 jobs:

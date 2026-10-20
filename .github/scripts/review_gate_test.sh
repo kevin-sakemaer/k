@@ -36,7 +36,12 @@ case "$endpoint" in
 esac
 status=200
 if [ -f "$MOCK/$key.status" ]; then status=$(cat "$MOCK/$key.status"); fi
-if [ "$include" = 1 ]; then printf 'HTTP/2.0 %s\r\n\r\n' "$status"; fi
+if [ "$include" = 1 ]; then
+  printf 'HTTP/2.0 %s\r\n' "$status"
+  if [ -f "$MOCK/$key.headers" ]; then cat "$MOCK/$key.headers"; fi
+  printf '\r\n'
+  if [ -f "$MOCK/$key.body" ]; then cat "$MOCK/$key.body"; fi
+fi
 if [ "$status" != 200 ]; then
   echo "gh: error (HTTP $status)" >&2
   exit 1
@@ -191,6 +196,48 @@ new_case "label removal forbidden (403)" synchronize review:approved
 echo 403 >"$MOCK/delete.status"
 run_gate
 check 1 "read-only token" deleted
+
+new_case "reopened removes approval" reopened review:approved
+run_gate
+check 1 "review:approved removed after a new push; a new review is required" deleted
+
+new_case "B approved, closed, force-pushed to A, reopened, activity 404" labeled review:approved
+echo 404 >"$MOCK/activity.status"
+printf '%s\n' "labeled review:approved 2026-10-20T10:00:00Z" "closed - 2026-10-20T10:10:00Z" "reopened - 2026-10-20T10:30:00Z" >"$MOCK/timeline.out"
+echo "2026-10-20T09:00:00Z" >"$MOCK/runs.out"
+run_gate
+check 1 "review:approved predates the latest push" deleted
+
+new_case "head_ref_restored after approval is refused" labeled review:approved
+echo 404 >"$MOCK/activity.status"
+printf '%s\n' "labeled review:approved 2026-10-20T10:00:00Z" "head_ref_restored - 2026-10-20T10:20:00Z" >"$MOCK/timeline.out"
+echo "2026-10-20T09:00:00Z" >"$MOCK/runs.out"
+run_gate
+check 1 "review:approved predates the latest push" deleted
+
+for limit in "retry-after: 60" "x-ratelimit-remaining: 0" "message: API rate limit exceeded"; do
+  new_case "rate-limit 403 ($limit) fails without fallback" labeled review:approved
+  echo 403 >"$MOCK/activity.status"
+  case "$limit" in
+    message:*) printf '{"message":"API rate limit exceeded"}\n' >"$MOCK/activity.body" ;;
+    *) printf '%s\r\n' "$limit" >"$MOCK/activity.headers" ;;
+  esac
+  echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+  echo "2026-10-20T09:00:00Z" >"$MOCK/runs.out"
+  run_gate
+  check 1 "rate limited" kept
+  if grep -q 'actions/runs' "$MOCK/calls"; then
+    FAILED=$((FAILED + 1)); echo "FAIL - $CASE (fallback was used)"
+  fi
+done
+
+new_case "access 403 with remaining quota allows fallback" labeled review:approved
+echo 403 >"$MOCK/activity.status"
+printf 'x-ratelimit-remaining: 4999\r\n' >"$MOCK/activity.headers"
+echo "labeled review:approved 2026-10-20T10:00:00Z" >"$MOCK/timeline.out"
+echo "2026-10-20T09:00:00Z" >"$MOCK/runs.out"
+run_gate
+check 0 "source: fallback" kept
 
 echo "$PASS passed, $FAILED failed"
 [ "$FAILED" = 0 ]

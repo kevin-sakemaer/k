@@ -20,10 +20,12 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
    - `review-gate`: fails without the `review:approved` label or when `review:changes-requested` is present.
 4. **Reviewer verdict**: a comment on the PR **and** a label, `review:approved` or `review:changes-requested`. Before re-approving, the Reviewer removes `review:changes-requested`.
 5. **Every push** to the PR automatically removes `review:approved`, and `review-gate` turns red on the new commit. Removing a label with the workflow token does not trigger a new run, so the check **stays red until the Reviewer adds `review:approved` again**.
-   - Every `review-gate` run also checks freshness: the latest `labeled review:approved` event in the PR timeline must be newer than the push that brought the current head SHA. The push time comes from the server-side repository activity API; if it is unavailable, from the latest `head_ref_force_pushed` event and the first workflow run for the head SHA. Commit dates are never used. A stale approval is removed and the job fails.
+   - Every `review-gate` run also checks freshness: the latest `labeled review:approved` event in the PR timeline must be newer than the push that brought the current head SHA. The push time comes from the server-side repository activity API; if it is unavailable, from the fallback below. Commit dates are never used. A stale approval is removed and the job fails.
    - The check fails closed: if the GitHub API is slow to record the push, or fails, the check stays red. Adding the label again (`review:approved`) or re-running the job unblocks it.
    - The logic lives in `.github/scripts/review_gate.sh`, tested by `.github/scripts/review_gate_test.sh` (plain bash, fake `gh`) in the `test` job.
-   - `synchronize` runs each get their own concurrency group, so a label event can never cancel them.
+   - Reopening the PR is treated like a push: `review:approved` is removed and the check fails, because pushes made while a PR is closed leave no trace in its timeline.
+   - The fallback push time is the latest of the `head_ref_force_pushed`, `reopened` and `head_ref_restored` events and the first workflow run for the head SHA. It is used only when the activity API answers an access 403 or 404. A rate-limit 403 fails the job; re-run it later.
+   - `synchronize` and `reopened` runs each get their own concurrency group, so a label event can never cancel them.
    - On fork PRs the token is read-only: the label cannot be removed automatically and the job fails with a clear message; the Reviewer removes the label by hand.
 6. **Auto-merge** (not active yet, see below): the dev runs `gh pr merge --auto --squash`. The PR merges by itself when the Reviewer adds `review:approved` and every required check is green.
 7. **Nobody merges by hand.** The only exception is the bootstrap: the PRs for #1 and #2 are merged once by hand after the Reviewer's verdict.

@@ -51,6 +51,23 @@ earliest() {
   printf '%s' "$min"
 }
 
+# True when a "gh api -i" response (headers and body) shows a rate limit.
+is_rate_limited() {
+  local line lower
+  while IFS= read -r line; do
+    line="${line%$'\r'}"
+    lower=$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')
+    case "$lower" in
+      retry-after:*) return 0 ;;
+      x-ratelimit-remaining:*)
+        if [ "$(printf '%s' "${lower#*:}" | tr -d ' ')" = 0 ]; then return 0; fi
+        ;;
+      *"rate limit"*) return 0 ;;
+    esac
+  done <<<"$1"
+  return 1
+}
+
 remove_approved() {
   local out
   if out=$("$GH" api -X DELETE "repos/$REPO/issues/$PR/labels/review%3Aapproved" 2>&1); then
@@ -65,13 +82,19 @@ remove_approved() {
 
 # Server-side time of the push that brought HEAD_SHA, from the activity API.
 # Prints the timestamp (possibly empty) and returns 0, or returns 2 when the API
-# answers an explicit 404 or 403 (fallback allowed). Any other error is fatal.
+# answers an explicit access 404 or 403 (fallback allowed). Any other error is
+# fatal, including a 403 caused by a primary or secondary rate limit: GitHub
+# also answers 403 for those, and they must not enable the weaker fallback.
 activity_push_time() {
   local probe status
   if probe=$("$GH" api -i "repos/$HEAD_REPO/activity?ref=refs/heads/$HEAD_REF&per_page=1" 2>/dev/null); then
     status=200
   else
     status=$(printf '%s\n' "$probe" | sed -n '1s/^HTTP\/[0-9.]* \([0-9][0-9][0-9]\).*/\1/p')
+  fi
+  if [ "$status" = 403 ] && is_rate_limited "$probe"; then
+    echo "::error::Activity API rate limited (HTTP 403); not falling back. Re-run the job later." >&2
+    return 1
   fi
   case "$status" in
     200) ;;
@@ -104,7 +127,9 @@ main() {
 
   has_label() { printf '%s\n' "$labels" | grep -qx "$1"; }
 
-  if [ "$ACTION" = "synchronize" ] && has_label 'review:approved'; then
+  # A reopened PR is treated like a push: pushes made while the PR was closed
+  # produce no synchronize run and no head_ref_force_pushed event.
+  if { [ "$ACTION" = "synchronize" ] || [ "$ACTION" = "reopened" ]; } && has_label 'review:approved'; then
     remove_approved
     fail "review:approved removed after a new push; a new review is required"
   fi
@@ -130,17 +155,20 @@ main() {
   if [ "$rc" -eq 0 ]; then
     source="activity API"
   elif [ "$rc" -eq 2 ]; then
-    # Fallback: latest of the last force-push event and the first workflow run
-    # for the head SHA. Both calls must succeed.
+    # Fallback: latest of the head_ref_force_pushed, reopened and
+    # head_ref_restored timeline events and the first workflow run for the
+    # head SHA. Both calls must succeed.
     local forced_at run_at runs
     forced_at=$(while read -r event name ts; do
-      if [ "$event" = "head_ref_force_pushed" ]; then printf '%s\n' "$ts"; fi
+      case "$event" in
+        head_ref_force_pushed | reopened | head_ref_restored) printf '%s\n' "$ts" ;;
+      esac
     done <<<"$timeline" | latest)
     runs=$(api --paginate "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" \
       --jq '.workflow_runs[].created_at')
     run_at=$(printf '%s\n' "$runs" | earliest)
     head_at=$(printf '%s\n%s\n' "$forced_at" "$run_at" | latest)
-    source="fallback: force-push timeline event / first workflow run"
+    source="fallback: force-push, reopened and head_ref_restored events / first workflow run"
   else
     exit 1
   fi
