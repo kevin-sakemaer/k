@@ -26,6 +26,9 @@ override, or `coverage.default`. The command exits with code 1 when `k.yaml`
 is invalid, or 64 for an unsupported key. Scripts use it instead of parsing
 `k.yaml`.
 
+The root `pubspec.yaml` must have a `name`: the root package is a workspace
+package, so it can have a coverage override and gets a threshold.
+
 Other checks read the typed values with `loadKConfig(Directory root)`.
 
 ## Schema
