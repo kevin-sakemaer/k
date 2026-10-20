@@ -161,6 +161,47 @@ check 0 "No protected path changed."
 new_case "other tool files are not protected" opened "tool/install_hooks.sh"
 check 0 "No protected path changed."
 
+for p in packages/k_comments/lib/src/check.dart packages/k_config/lib/k_config.dart packages/k_publishers/bin/k_publishers.dart packages/k_workflows/pubspec.yaml; do
+  new_case "checker package file $p without label fails" opened "$p lib/a.dart"
+  check 1 "  $p"
+done
+
+new_case "checker package with fresh label passes" labeled "packages/k_config/lib/src/parser.dart" "$L"
+fresh
+check 0 "Approved by label" kept
+
+new_case "deleting a checker package test without label fails" opened "packages/k_comments/test/cli_test.dart"
+check 1 "  packages/k_comments/test/cli_test.dart"
+
+new_case "renaming a file out of a checker package without label fails" opened "packages/other/a.dart:packages/k_publishers/lib/a.dart"
+check 1 "  packages/k_publishers/lib/a.dart"
+
+new_case "renaming a file into a checker package without label fails" opened "packages/k_config/lib/a.dart:packages/other/a.dart"
+check 1 "  packages/k_config/lib/a.dart"
+
+for p in pubspec.yaml pubspec.lock pubspec_overrides.yaml packages/k_comments/pubspec_overrides.yaml packages/k_config/pubspec_overrides.yaml packages/k_publishers/pubspec_overrides.yaml packages/k_workflows/pubspec_overrides.yaml packages/k_core/pubspec_overrides.yaml packages/other/pubspec_overrides.yaml a/b/c/pubspec_overrides.yaml packages/k_core/pubspec.lock packages/other/pubspec.lock a/b/c/pubspec.lock packages/k_core/pubspec.yaml packages/other/pubspec.yaml a/b/pubspec.yaml; do
+  new_case "dependency resolution file $p without label fails" opened "$p"
+  check 1 "  $p"
+done
+
+# The guard matches paths, not content: a non-checker member pubspec.yaml whose
+# diff adds dependency_overrides (applied to the whole workspace, so to the
+# checkers too) is refused without the label, whatever the diff contains.
+new_case "dependency_overrides added in packages/k_core/pubspec.yaml without label fails" opened "packages/k_core/pubspec.yaml"
+check 1 "  packages/k_core/pubspec.yaml" kept
+
+new_case "a new workspace package without label fails" opened "packages/k_new/pubspec.yaml packages/k_new/lib/k_new.dart"
+check 1 "  packages/k_new/pubspec.yaml"
+
+new_case "names similar to pubspec files are not protected" opened "docs/pubspec.yaml.md packages/k_core/pubspec.yaml.bak packages/a/my_pubspec.yaml pubspec.yaml.bak pubspec.lock.bak packages/a/my_pubspec.lock packages/a/pubspec_overrides.yaml.bak"
+check 0 "No protected path changed."
+
+new_case "packages outside the checker list are not protected" opened "packages/k_core/lib/k_core.dart packages/other/lib/a.dart"
+check 0 "No protected path changed."
+
+new_case "misleading checker prefixes are not protected" opened "packages/k_config_extra/lib/a.dart packages/k_comments2/a.dart packages/k_publishers.md packages/k_workflows_old/x.dart other/packages/k_config/a.dart"
+check 0 "No protected path changed."
+
 new_case "fresh label passes" labeled ".github/CODEOWNERS" "$L"
 fresh
 check 0 "Approved by label" kept
@@ -243,6 +284,43 @@ check 1 "read-only token"
 new_case "label already gone is fine" synchronize "lib/a.dart" "$L"
 echo 404 >"$MOCK/delete.status"
 check 0 "No protected path changed."
+
+# Completeness of CHECKER_PACKAGES, read from the script itself. Criterion: a
+# package is a checker when it has a bin/ directory (tool/check.sh and the
+# workflows run checkers as packages/<name>/bin/<name>.dart), and every
+# packages/k_* is a checker unless it is in NON_CHECKERS below, an explicit
+# list of libraries without any executable. Every bin/ script that
+# tool/check.sh or a workflow runs must also belong to a listed package, and
+# every listed package must exist.
+NON_CHECKERS=(packages/k_core)
+ROOT="$(cd "$HERE/../.." && pwd)"
+LISTED=$(sed -n '/^CHECKER_PACKAGES=(/,/^)/{/^ /p}' "$SCRIPT" | tr -d ' ')
+listed() { printf '%s\n' "$LISTED" | grep -qxF "$1"; }
+non_checker() { printf '%s\n' "${NON_CHECKERS[@]}" | grep -qxF "$1"; }
+missing=""
+for d in "$ROOT"/packages/*/; do
+  pkg="packages/$(basename "$d")"
+  if [ -d "$d/bin" ] && ! listed "$pkg"; then missing+=" $pkg(bin)"; fi
+  case "$pkg" in
+    packages/k_*) if ! non_checker "$pkg" && ! listed "$pkg"; then missing+=" $pkg"; fi ;;
+  esac
+done
+for pkg in $(grep -ohE 'packages/[A-Za-z0-9_]+/bin/' "$ROOT/tool/check.sh" "$ROOT"/.github/workflows/*.yml | sed 's#/bin/##' | sort -u); do
+  if ! listed "$pkg"; then missing+=" $pkg(run)"; fi
+done
+for pkg in $LISTED; do
+  if [ ! -d "$ROOT/$pkg" ]; then missing+=" $pkg(absent)"; fi
+done
+for pkg in "${NON_CHECKERS[@]}"; do
+  if [ -d "$ROOT/$pkg/bin" ]; then missing+=" $pkg(non-checker with bin)"; fi
+done
+if [ -z "$missing" ] && [ -n "$LISTED" ]; then
+  PASS=$((PASS + 1))
+  echo "ok   - CHECKER_PACKAGES lists every checker package"
+else
+  FAILED=$((FAILED + 1))
+  echo "FAIL - CHECKER_PACKAGES lists every checker package:${missing:- empty list}"
+fi
 
 echo "github_guard: $PASS passed, $FAILED failed"
 [ "$FAILED" = 0 ]
