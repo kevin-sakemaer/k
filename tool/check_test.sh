@@ -39,7 +39,8 @@ case "$1 ${2:-}" in
       sed "s|@PKG@|$PWD|g" fake.lcov >"$out"
     fi
     ;;
-  "run packages/k_config/bin/k_config.dart")
+  "run k_config")
+    echo "dart $*" >>.fake_runs
     [ -z "${FAKE_KCONFIG_FAIL:-}" ] || {
       echo "k.yaml: invalid YAML" >&2
       exit 1
@@ -93,6 +94,7 @@ new_repo() {
   printf 'void main() {}\n' >"$d/packages/a/test/a_test.dart"
   printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:2\nend_of_record\n' >"$d/packages/a/fake.lcov"
   add_pkg_script "$d" k_comments
+  add_pkg_script "$d" k_config
   echo "$d"
 }
 
@@ -148,7 +150,12 @@ printf 'SF:@PKG@/lib/a.dart\nLF:2\nLH:1\nend_of_record\n' >"$r/packages/a/fake.l
 expect "coverage below the threshold fails" 1 "below the threshold 100%" "$r"
 
 r="$(new_repo)"
-FAKE_KCONFIG_FAIL=1 expect "an invalid k.yaml fails" 1 "k.yaml validation failed" "$r"
+rm -r "$r/packages/k_config"
+expect "missing k_config fails: k.yaml validation is required" 1 \
+  "packages/k_config/bin/k_config.dart not found: the k.yaml validation (k_config) is required" "$r"
+
+r="$(new_repo)"
+FAKE_KCONFIG_FAIL=1 expect "an invalid k.yaml fails" 1 "FAIL: k.yaml validation (k_config) failed" "$r"
 
 r="$(new_repo)"
 printf 'coverage.tool_version 1.16.0\n' >"$r/.fake_kconfig"
@@ -158,6 +165,9 @@ expect "a value k_config does not print fails" 1 \
 r="$(new_repo)"
 : >"$r/k.yaml"
 expect "k.yaml is never parsed by check.sh" 0 "All checks passed." "$r"
+if ! ran "$r" "dart run k_config --get coverage.tool_version"; then
+  echo "FAIL - k.yaml values are read by name through k_config --get"; failed=$((failed + 1))
+fi
 
 # Blocking 3: k.yaml is required and checked first.
 r="$(new_repo)"
@@ -203,7 +213,7 @@ expect "export-only lib file is not counted" 0 "All checks passed." "$r"
 # Skips of repository scripts.
 r="$(new_repo)"
 CI_MODE=true expect "skip emits a CI warning" 0 \
-  "::warning::SKIP: tool/check_publishers.dart not found" "$r"
+  "::warning::SKIP: packages/k_publishers/bin/k_publishers.dart not found" "$r"
 
 r="$(new_repo)"
 FAKE_GH_STATE=CLOSED expect "skip fails once the issue is closed" 1 \
@@ -215,7 +225,7 @@ FAKE_GH_FAIL=1 expect "unknown issue state only warns locally" 0 \
 
 r="$(new_repo)"
 FAKE_GH_FAIL=1 CI_MODE=true expect "unknown issue state fails in CI" 1 \
-  "::error::tool/check_publishers.dart not found and the state of issue #4 could not be checked" "$r"
+  "::error::packages/k_publishers/bin/k_publishers.dart not found and the state of issue #4 could not be checked" "$r"
 
 # Repository script locations and invocation.
 r="$(new_repo)"
