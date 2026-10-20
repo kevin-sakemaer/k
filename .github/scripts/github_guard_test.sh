@@ -179,12 +179,12 @@ check 1 "  packages/k_publishers/lib/a.dart"
 new_case "renaming a file into a checker package without label fails" opened "packages/k_config/lib/a.dart:packages/other/a.dart"
 check 1 "  packages/k_config/lib/a.dart"
 
-for p in pubspec.yaml pubspec.lock pubspec_overrides.yaml packages/k_comments/pubspec_overrides.yaml packages/k_config/pubspec_overrides.yaml packages/k_publishers/pubspec_overrides.yaml packages/k_workflows/pubspec_overrides.yaml packages/k_core/pubspec_overrides.yaml; do
+for p in pubspec.yaml pubspec.lock pubspec_overrides.yaml packages/k_comments/pubspec_overrides.yaml packages/k_config/pubspec_overrides.yaml packages/k_publishers/pubspec_overrides.yaml packages/k_workflows/pubspec_overrides.yaml packages/k_core/pubspec_overrides.yaml packages/other/pubspec_overrides.yaml a/b/c/pubspec_overrides.yaml packages/k_core/pubspec.lock packages/other/pubspec.lock a/b/c/pubspec.lock; do
   new_case "dependency resolution file $p without label fails" opened "$p"
   check 1 "  $p"
 done
 
-new_case "nested pubspec.yaml and pubspec.lock outside checkers are not protected" opened "packages/k_core/pubspec.yaml packages/other/pubspec.lock docs/pubspec.yaml.md pubspec.yaml.bak"
+new_case "nested pubspec.yaml outside checkers and similar names are not protected" opened "packages/k_core/pubspec.yaml a/b/pubspec.yaml docs/pubspec.yaml.md pubspec.yaml.bak pubspec.lock.bak packages/a/my_pubspec.lock packages/a/pubspec_overrides.yaml.bak"
 check 0 "No protected path changed."
 
 new_case "packages outside the checker list are not protected" opened "packages/k_core/lib/k_core.dart packages/other/lib/a.dart"
