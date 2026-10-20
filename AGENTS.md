@@ -10,7 +10,8 @@ All agents share the `kevin-sakemaer` GitHub account: classic GitHub approval is
 - Every rule must live in a required CI check. Checks still to come, each tracked in its own issue and made required on `main` when done:
   - `///`-only comments: #9;
   - dependency publishers: #4;
-  - `k.yaml` validation: #10.
+  - `k.yaml` validation: #10;
+  - no closing keywords in partial PRs (Pre-commit checklist point 7): #26.
 
 ## Pre-commit checklist
 Mandatory before every commit and push (#16). The Reviewer may reject without detailed review any PR failing one of these points.
