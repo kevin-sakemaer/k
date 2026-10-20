@@ -96,7 +96,7 @@ new_repo() {
   cp "$here/../.github/scripts/workflow_lint.sh" "$d/.github/scripts/"
   cp "$here/../.github/workflows/"*.yml "$d/.github/workflows/"
   for t in .github/scripts/review_gate_test.sh .github/scripts/github_guard_test.sh \
-    .github/scripts/workflow_lint_test.sh tool/check_test.sh; do
+    .github/scripts/workflow_lint_test.sh .github/scripts/auto_merge_test.sh tool/check_test.sh; do
     printf '#!/usr/bin/env bash\nexit 0\n' >"$d/$t"
   done
   printf 'name: ws\nworkspace:\n  - packages/a\n' >"$d/pubspec.yaml"
