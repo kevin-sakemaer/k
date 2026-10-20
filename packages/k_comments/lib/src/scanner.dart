@@ -26,7 +26,10 @@ enum CommentKind {
   unterminatedBlock('unterminated block comment'),
 
   /// A file that cannot be read as UTF-8 text.
-  unreadable('cannot read file as UTF-8');
+  unreadable('cannot read file as UTF-8'),
+
+  /// A symbolic link whose target is missing or outside the scan root.
+  linkOutsideRoot('symbolic link target is missing or outside the scan root');
 
   new(this.message);
 
@@ -80,6 +83,10 @@ final class CommentScanConfig {
 }
 
 /// Diagnostic name of the analyzer scanner for a `/*` that is never closed.
+///
+/// The analyzer only exposes this code under `src/`, so its name is compared.
+/// `pubspec.lock` pins the analyzer version, and a dedicated test fails if
+/// the name changes.
 const String _unterminatedComment = 'unterminated_multi_line_comment';
 
 /// Returns every forbidden comment in [source], reported against [path].
@@ -106,6 +113,7 @@ List<CommentViolation> findViolations(String source, String path) {
     );
   }
 
+  var lastEnd = 0;
   Token? token = result.unit.beginToken;
   while (token != null) {
     Token? comment = token.precedingComments;
@@ -114,16 +122,24 @@ List<CommentViolation> findViolations(String source, String path) {
       if (kind != null) {
         violations.add(at(comment.offset, kind));
       }
+      lastEnd = comment.end;
       comment = comment.next;
     }
     if (token.isEof) {
       break;
     }
+    lastEnd = token.end;
     token = token.next;
   }
   for (final Diagnostic diagnostic in result.errors) {
     if (diagnostic.diagnosticCode.lowerCaseName == _unterminatedComment) {
-      violations.add(at(diagnostic.offset, CommentKind.unterminatedBlock));
+      final int start = source.indexOf('/*', lastEnd);
+      violations.add(
+        at(
+          start < 0 ? diagnostic.offset : start,
+          CommentKind.unterminatedBlock,
+        ),
+      );
     }
   }
   return violations;
@@ -150,35 +166,59 @@ CommentKind? _kindOf(String lexeme) {
 ///
 /// Only files with the `.dart` extension are read, whatever the globs match,
 /// so YAML and other files are never scanned. A file that is not valid UTF-8
-/// is reported as [CommentKind.unreadable]. Reported paths are relative to [root] and use `/` separators.
+/// is reported as [CommentKind.unreadable].
+///
+/// A symbolic link to a `.dart` file is followed: its target is scanned and
+/// reported under the link path when it is inside [root]. A link whose target
+/// is missing or outside [root] is reported as [CommentKind.linkOutsideRoot].
+/// Directory links are not followed.
+///
+/// Reported paths are relative to [root] and use `/` separators.
 List<CommentViolation> scanFiles(Directory root, CommentScanConfig config) {
-  final List<File> files =
+  final String canonicalRoot = root.resolveSymbolicLinksSync();
+  final List<FileSystemEntity> entities =
       root
           .listSync(recursive: true, followLinks: false)
-          .whereType<File>()
-          .where((file) => p.extension(file.path) == '.dart')
-          .where((file) => config.matches(_relative(file.path, root.path)))
+          .where((entity) => entity is File || entity is Link)
+          .where((entity) => p.extension(entity.path) == '.dart')
+          .where((entity) => config.matches(_relative(entity.path, root.path)))
           .toList()
         ..sort((a, b) => a.path.compareTo(b.path));
   return <CommentViolation>[
-    for (final file in files)
-      ..._scanFile(file, _relative(file.path, root.path)),
+    for (final entity in entities)
+      ..._scanEntity(entity, _relative(entity.path, root.path), canonicalRoot),
   ];
 }
+
+List<CommentViolation> _scanEntity(
+  FileSystemEntity entity,
+  String path,
+  String canonicalRoot,
+) {
+  if (entity is File) {
+    return _scanFile(entity, path);
+  }
+  final String target;
+  try {
+    target = entity.resolveSymbolicLinksSync();
+  } on FileSystemException {
+    return <CommentViolation>[_atStart(path, CommentKind.linkOutsideRoot)];
+  }
+  if (!p.isWithin(canonicalRoot, target)) {
+    return <CommentViolation>[_atStart(path, CommentKind.linkOutsideRoot)];
+  }
+  return _scanFile(File(target), path);
+}
+
+CommentViolation _atStart(String path, CommentKind kind) =>
+    CommentViolation(path: path, line: 1, column: 1, kind: kind);
 
 List<CommentViolation> _scanFile(File file, String path) {
   final String source;
   try {
     source = file.readAsStringSync();
   } on FileSystemException {
-    return <CommentViolation>[
-      CommentViolation(
-        path: path,
-        line: 1,
-        column: 1,
-        kind: CommentKind.unreadable,
-      ),
-    ];
+    return <CommentViolation>[_atStart(path, CommentKind.unreadable)];
   }
   return findViolations(source, path);
 }

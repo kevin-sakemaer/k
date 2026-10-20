@@ -90,16 +90,37 @@ void main() {
       expect(kinds('/////\nvoid f() {}\n'), <CommentKind>[CommentKind.line]);
     });
 
-    test('reports an unterminated block comment', () {
-      final List<CommentViolation> found = findViolations(
-        'void f() {}\n/* never closed',
-        'a.dart',
+    test('reports an unterminated block comment at its opening', () {
+      expect(
+        findViolations(
+          'void f() {}\n/* never closed\n',
+          'a.dart',
+        ).map((v) => v.toString()),
+        <String>['a.dart:2:1: unterminated block comment'],
       );
-      expect(found.map((v) => v.kind), <CommentKind>[
-        CommentKind.unterminatedBlock,
-      ]);
-      expect(found.single.toString(), startsWith('a.dart:2:'));
-      expect(found.single.toString(), endsWith('unterminated block comment'));
+    });
+
+    test('locates an unterminated block comment followed by lines', () {
+      expect(
+        findViolations(
+          'void f() {}\n/// ok\nvoid g() {} /* open\nline\n// x\nend\n',
+          'a.dart',
+        ).map((v) => v.toString()),
+        <String>['a.dart:3:13: unterminated block comment'],
+      );
+    });
+
+    test('locates an unterminated block comment after a closed one', () {
+      expect(
+        findViolations(
+          '/* a */\n  /* b /* c */\nx\n',
+          'a.dart',
+        ).map((v) => v.toString()),
+        <String>[
+          'a.dart:1:1: block comment is not allowed, use /// only',
+          'a.dart:2:3: unterminated block comment',
+        ],
+      );
     });
 
     test('counts columns in Unicode code points', () {
@@ -164,6 +185,37 @@ void main() {
       expect(found.map((v) => v.toString()), <String>[
         'lib/a.dart:1:1: line comment is not allowed, use /// only',
         'lib/bad.dart:1:1: cannot read file as UTF-8',
+      ]);
+    });
+
+    test('scans the target of a symbolic link inside the root', () {
+      Link('${root.path}/lib/link.dart').createSync('${root.path}/gen/c.dart');
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(include: <String>['lib/**'], exclude: <String>[]),
+      );
+      expect(found.map((v) => v.toString()), <String>[
+        'lib/a.dart:1:1: line comment is not allowed, use /// only',
+        'lib/link.dart:1:1: line comment is not allowed, use /// only',
+      ]);
+    });
+
+    test('reports symbolic links that are outside the root or broken', () {
+      final Directory outside = Directory.systemTemp.createTempSync('k_out_');
+      addTearDown(() => outside.deleteSync(recursive: true));
+      File('${outside.path}/real.dart').writeAsStringSync('// real\n');
+      Link('${root.path}/lib/out.dart').createSync('${outside.path}/real.dart');
+      Link('${root.path}/lib/broken.dart').createSync('${root.path}/none.dart');
+      final List<CommentViolation> found = scanFiles(
+        root,
+        CommentScanConfig(include: <String>['lib/**'], exclude: <String>[]),
+      );
+      const message =
+          'symbolic link target is missing or outside the scan root';
+      expect(found.map((v) => v.toString()), <String>[
+        'lib/a.dart:1:1: line comment is not allowed, use /// only',
+        'lib/broken.dart:1:1: $message',
+        'lib/out.dart:1:1: $message',
       ]);
     });
 
