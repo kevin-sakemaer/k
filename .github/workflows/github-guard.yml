@@ -1,0 +1,41 @@
+name: github-guard
+
+# Fails when a PR changes a protected path (.github/, tool/check.sh,
+# tool/*_test.sh, tool/hooks/, and analysis_options.yaml or k.yaml at any depth)
+# unless the Reviewer added a fresh label ci:github-change-approved; every push
+# removes that label (#15). The list lives in .github/scripts/github_guard.sh.
+# pull_request_target runs this workflow and its script as defined on the base
+# branch. Never check out or run code from the PR head here.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions: {}
+
+# Same scheme as review-gate: synchronize and reopened runs are never cancelled.
+concurrency:
+  group: github-guard-${{ github.event.pull_request.number }}-${{ (github.event.action == 'synchronize' || github.event.action == 'reopened') && github.run_id || 'label' }}
+  cancel-in-progress: false
+
+jobs:
+  github-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # github.sha is the tip of the base branch under pull_request_target,
+          # so workflow and scripts come from the same commit, never the PR head.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Check protected paths
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
+        run: bash .github/scripts/github_guard.sh
