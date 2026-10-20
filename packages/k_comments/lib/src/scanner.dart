@@ -29,12 +29,33 @@ enum CommentKind {
   unreadable('cannot read file as UTF-8'),
 
   /// A symbolic link whose target is missing or outside the scan root.
-  linkOutsideRoot('symbolic link target is missing or outside the scan root');
+  linkOutsideRoot('symbolic link target is missing or outside the scan root'),
+
+  /// A `.dart` symbolic link that points to a directory.
+  linkToDirectory('symbolic link points to a directory, not a Dart file'),
+
+  /// A file listed in the comment exceptions that has no forbidden comment,
+  /// or that is not checked at all.
+  unusedException(
+    'comment exception is not needed: the file is not checked or only has '
+    '/// comments; remove it from k.yaml',
+  );
 
   new(this.message);
 
   /// Message used in reports.
   final String message;
+
+  /// Whether this kind is a forbidden comment, the only kind that a comment
+  /// exception suppresses. File problems (unreadable files and bad symbolic
+  /// links) are always reported.
+  bool get isComment => switch (this) {
+    line || ignore || block || docBlock || unterminatedBlock => true,
+    unreadable ||
+    linkOutsideRoot ||
+    linkToDirectory ||
+    unusedException => false,
+  };
 }
 
 /// A forbidden comment found in a Dart file.
@@ -68,13 +89,21 @@ final class CommentViolation {
 ///
 /// Every value comes from the caller: the scanner has no built-in defaults.
 final class CommentScanConfig {
-  /// Creates a configuration from glob patterns relative to the scan root.
-  new({required List<String> include, required List<String> exclude})
-    : _include = include.map(Glob.new).toList(),
-      _exclude = exclude.map(Glob.new).toList();
+  /// Creates a configuration from glob patterns relative to the scan root,
+  /// and the relative paths of the files allowed to keep forbidden comments.
+  new({
+    required List<String> include,
+    required List<String> exclude,
+    required Iterable<String> exceptions,
+  }) : _include = include.map(Glob.new).toList(),
+       _exclude = exclude.map(Glob.new).toList(),
+       exceptions = Set.unmodifiable(exceptions);
 
   final List<Glob> _include;
   final List<Glob> _exclude;
+
+  /// Relative paths, with `/` separators, of the excepted files.
+  final Set<String> exceptions;
 
   /// Whether the file at [relativePath] (with `/` separators) is checked.
   bool matches(String relativePath) =>
@@ -171,7 +200,13 @@ CommentKind? _kindOf(String lexeme) {
 /// A symbolic link to a `.dart` file is followed: its target is scanned and
 /// reported under the link path when it is inside [root]. A link whose target
 /// is missing or outside [root] is reported as [CommentKind.linkOutsideRoot].
-/// Directory links are not followed.
+/// A `.dart` link to a directory is reported as [CommentKind.linkToDirectory].
+/// Other directory links are not followed.
+///
+/// The forbidden comments of a file listed in [CommentScanConfig.exceptions]
+/// are not reported; its file problems still are. An exception whose file is
+/// not checked or has no forbidden comment is reported as
+/// [CommentKind.unusedException], so the list stays minimal.
 ///
 /// Reported paths are relative to [root] and use `/` separators.
 List<CommentViolation> scanFiles(Directory root, CommentScanConfig config) {
@@ -184,10 +219,31 @@ List<CommentViolation> scanFiles(Directory root, CommentScanConfig config) {
           .where((entity) => config.matches(_relative(entity.path, root.path)))
           .toList()
         ..sort((a, b) => a.path.compareTo(b.path));
-  return <CommentViolation>[
-    for (final entity in entities)
-      ..._scanEntity(entity, _relative(entity.path, root.path), canonicalRoot),
-  ];
+  final violations = <CommentViolation>[];
+  final usedExceptions = <String>{};
+  for (final entity in entities) {
+    final String path = _relative(entity.path, root.path);
+    final List<CommentViolation> found = _scanEntity(
+      entity,
+      path,
+      canonicalRoot,
+    );
+    if (config.exceptions.contains(path)) {
+      final Iterable<CommentViolation> comments = found.where(
+        (violation) => violation.kind.isComment,
+      );
+      if (comments.isNotEmpty) {
+        usedExceptions.add(path);
+      }
+      violations.addAll(found.where((violation) => !violation.kind.isComment));
+    } else {
+      violations.addAll(found);
+    }
+  }
+  final List<String> unused =
+      config.exceptions.difference(usedExceptions).toList()..sort();
+  return violations
+    ..addAll(unused.map((path) => _atStart(path, CommentKind.unusedException)));
 }
 
 List<CommentViolation> _scanEntity(
@@ -206,6 +262,9 @@ List<CommentViolation> _scanEntity(
   }
   if (!p.isWithin(canonicalRoot, target)) {
     return <CommentViolation>[_atStart(path, CommentKind.linkOutsideRoot)];
+  }
+  if (FileSystemEntity.isDirectorySync(target)) {
+    return <CommentViolation>[_atStart(path, CommentKind.linkToDirectory)];
   }
   return _scanFile(File(target), path);
 }

@@ -11,4 +11,9 @@ coverage:
 dependencies:
   exceptions: {}
 comments:
+  include:
+    - "**.dart"
+  exclude:
+    - ".dart_tool/**"
+    - "**/.dart_tool/**"
   exceptions: []

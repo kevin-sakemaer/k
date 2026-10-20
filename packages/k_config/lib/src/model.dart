@@ -92,7 +92,18 @@ final class DependencyException {
 /// Settings of the Dart comment check.
 final class CommentsConfig {
   /// Creates comment settings.
-  const new({required this.exceptions});
+  const new({
+    required this.include,
+    required this.exclude,
+    required this.exceptions,
+  });
+
+  /// Glob patterns, relative to the repository root, of the files to check.
+  /// Only `.dart` files are ever read.
+  final List<String> include;
+
+  /// Glob patterns, relative to the repository root, of the files to skip.
+  final List<String> exclude;
 
   /// Files that may contain non-documentation comments.
   final List<CommentException> exceptions;

@@ -1,6 +1,7 @@
 /// Strict validation of the `k.yaml` source.
 library;
 
+import 'package:glob/glob.dart';
 import 'package:k_config/src/model.dart';
 import 'package:k_config/src/workspace.dart';
 import 'package:yaml/yaml.dart';
@@ -233,21 +234,62 @@ final class _Validator {
 
   CommentsConfig? comments(Object? value, String path) {
     final Map<String, Object?>? map = strictMap(value, path, const {
+      'include',
+      'exclude',
       'exceptions',
     });
     if (map == null) {
       return null;
     }
+    final List<String>? include = field(map, path, 'include', nonEmptyGlobs);
+    final List<String>? exclude = field(map, path, 'exclude', globs);
     final List<CommentException>? exceptions = field(
       map,
       path,
       'exceptions',
       commentExceptions,
     );
-    if (exceptions == null) {
+    if (include == null || exclude == null || exceptions == null) {
       return null;
     }
-    return CommentsConfig(exceptions: exceptions);
+    return CommentsConfig(
+      include: include,
+      exclude: exclude,
+      exceptions: exceptions,
+    );
+  }
+
+  List<String>? nonEmptyGlobs(Object? value, String path) {
+    final List<String>? patterns = globs(value, path);
+    if (patterns != null && patterns.isEmpty) {
+      error(path, 'must list at least one glob pattern.');
+      return null;
+    }
+    return patterns;
+  }
+
+  List<String>? globs(Object? value, String path) {
+    if (value is! List) {
+      error(path, 'must be a list.');
+      return null;
+    }
+    final patterns = <String>[];
+    var valid = true;
+    for (final (index, item) in value.indexed) {
+      if (item is! String || item.trim().isEmpty) {
+        valid = false;
+        error('$path[$index]', 'must be a non-empty glob pattern string.');
+      } else if (_globError(item) case final String message?) {
+        valid = false;
+        error('$path[$index]', 'invalid glob pattern "$item": $message.');
+      } else if (patterns.contains(item)) {
+        valid = false;
+        error('$path[$index]', 'duplicated pattern "$item".');
+      } else {
+        patterns.add(item);
+      }
+    }
+    return valid ? List.unmodifiable(patterns) : null;
   }
 
   List<CommentException>? commentExceptions(Object? value, String path) {
@@ -302,6 +344,16 @@ final class _Validator {
       return null;
     }
     return value;
+  }
+
+  /// The parse error of the glob [pattern], or `null` when it is valid.
+  static String? _globError(String pattern) {
+    try {
+      Glob(pattern);
+      return null;
+    } on FormatException catch (exception) {
+      return exception.message;
+    }
   }
 
   /// A plain decimal integer, without sign, leading zero, separator, base
