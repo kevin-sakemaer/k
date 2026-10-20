@@ -1,0 +1,35 @@
+name: review-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions: {}
+
+# Each synchronize or reopened run gets its own group (github.run_id), so no later event can
+# cancel or replace it while it is pending: the push always removes review:approved.
+# Label runs share one group per PR. A pending run in a group can still be replaced
+# by a newer one, so the freshness check below does not rely on this setting.
+concurrency:
+  group: review-gate-${{ github.event.pull_request.number }}-${{ (github.event.action == 'synchronize' || github.event.action == 'reopened') && github.run_id || 'label' }}
+  cancel-in-progress: false
+
+jobs:
+  review-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check review labels
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
+        run: bash .github/scripts/review_gate.sh
