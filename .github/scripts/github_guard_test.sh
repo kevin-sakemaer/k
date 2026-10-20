@@ -488,6 +488,26 @@ rebase_case "malformed label time removes the label" synchronize "$V1" "$V2" ".g
 echo "labeled $L 2026-10-20T10:00:00+02:00" >"$MOCK/timeline.out"
 check 1 "Malformed label time" deleted
 
+# Injected git config must not reach bare_git (shared from freshness.sh):
+# each variable redirects the fetch of $ORIGIN to a missing repository, so
+# honoring it would drop the label.
+printf '[url "%s/nowhere"]\n\tinsteadOf = %s\n' "$WORK" "$ORIGIN" >"$WORK/redirect.gitconfig"
+for inject in count parameters global system; do
+  rebase_case "injected git config ($inject) is ignored" synchronize "$V1" "$V2" ".github/w.yml lib/x.txt"
+  case "$inject" in
+    count) set -- GIT_CONFIG_COUNT=1 "GIT_CONFIG_KEY_0=url.$WORK/nowhere.insteadOf" "GIT_CONFIG_VALUE_0=$ORIGIN" ;;
+    parameters) set -- "GIT_CONFIG_PARAMETERS='url.$WORK/nowhere.insteadof'='$ORIGIN'" ;;
+    global) set -- "GIT_CONFIG_GLOBAL=$WORK/redirect.gitconfig" ;;
+    system) set -- "GIT_CONFIG_SYSTEM=$WORK/redirect.gitconfig" ;;
+  esac
+  # check runs the script itself: export the injected variables around it.
+  export "$@"
+  check 0 "same patch: keep" kept
+  unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_PARAMETERS \
+    GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM
+done
+set --
+
 rebase_case "reopened with the same patch still removes the label" reopened "$V1" "$V2" ".github/w.yml"
 check 1 "the Reviewer must add the label" deleted
 no_marker

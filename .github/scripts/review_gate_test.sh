@@ -559,9 +559,25 @@ printf '%s 2026-10-20T09:00:00Z\n%s 2026-10-20T09:00:00Z\n%s 2026-10-20T11:00:00
 run_rebase
 check 1 "ambiguous" deleted
 
-rebase_case "injected git config is ignored" synchronize "$V1" "$V2"
-GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.noprefix GIT_CONFIG_VALUE_0=true GIT_CONFIG_PARAMETERS="'core.abbrev'='7'" GIT_CONFIG_GLOBAL="$WORK/nope" K_GATE_TEST=1 GATE_GIT_URL="$ORIGIN" run_gate
-check 0 "same patch: keep" kept
+# Injected git config must not reach bare_git (shared from freshness.sh):
+# each variable redirects the fetch of $ORIGIN to a missing repository, so
+# honoring it would drop the label.
+printf '[url "%s/nowhere"]\n\tinsteadOf = %s\n' "$WORK" "$ORIGIN" >"$WORK/redirect.gitconfig"
+for inject in count parameters global system; do
+  rebase_case "injected git config ($inject) is ignored" synchronize "$V1" "$V2"
+  case "$inject" in
+    count) set -- GIT_CONFIG_COUNT=1 "GIT_CONFIG_KEY_0=url.$WORK/nowhere.insteadOf" "GIT_CONFIG_VALUE_0=$ORIGIN" ;;
+    parameters) set -- "GIT_CONFIG_PARAMETERS='url.$WORK/nowhere.insteadof'='$ORIGIN'" ;;
+    global) set -- "GIT_CONFIG_GLOBAL=$WORK/redirect.gitconfig" ;;
+    system) set -- "GIT_CONFIG_SYSTEM=$WORK/redirect.gitconfig" ;;
+  esac
+  set +e
+  OUT=$(env "$@" PATH="$WORK/bin:$PATH" K_GATE_TEST=1 GATE_GIT_URL="$ORIGIN" REPO=kevin-sakemaer/k PR=8 bash "$SCRIPT" 2>&1)
+  CODE=$?
+  set -e
+  check 0 "same patch: keep" kept
+done
+set --
 
 rebase_case "reopened with the same patch still removes approval" reopened "$V1" "$V2"
 run_rebase
